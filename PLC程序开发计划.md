@@ -203,6 +203,16 @@ P0 契约冻结
 
 ## 5. 编码与评审规范要点
 
+- **汇川 H5U 平台语法约定（与标准 IEC 61131-3 写法不同，全工程强制，勿再按 IEC 惯例写）**：
+  - **定时器不声明 TON/TOF/TP 实例**，一律用内联指令，定时结果由 `Q=>` 直接落到一个 **BOOL** 变量：
+    `TONR(IN := <条件>, PT := <时间常量或TIME变量>, Q => <BOOL位>);`
+    需要定时时，在局部 VAR 声明一个 BOOL（如 `tStepTimer : BOOL;`），调用 `TONR(IN:=..., PT:=..., Q=>tStepTimer);`，之后**直接读 `tStepTimer`**（不是 `tStepTimer.Q`）。断电保持累计用 TONR；通电延时/断电延时按 H5U 指令集同样以内联形式调用。
+  - **上升沿/下降沿仍声明功能块实例，但类型名必须带库前缀**：上升沿 `TRIG.R_TRIG`、下降沿 `TRIG.F_TRIG`（不是裸 `R_TRIG`/`F_TRIG`）。用法 `rTrigX(CLK := <信号>);` 后读 `rTrigX.Q`（`.Q` 读法不变）。
+  - **CASE 分支标签必须用字面整数，不能用具名常量标识符**：H5U 编译器把 `VAR_GLOBAL CONSTANT` 的常量（如 `ST_STANDBY`）也当作变量，CASE 标签写常量名会编译报错。必须写数字、行尾注释具名码值，便于追溯：
+    `10: // ST_STANDBY ...`（不要写 `ST_STANDBY:`）。具名常量仍用于 IF 比较、赋值、运算表达式（如 `IF iState = ST_STANDBY`、`iState := ST_HOMING`），仅 CASE 标签受限。
+  - **功能块实例只能在 PROGRAM / FUNCTION_BLOCK 的局部 VAR 声明**；全局 GVL 仅支持 BOOL/INT/DINT/REAL/STRING/IP/BYTE/指针。定型模式：局部 `TRIG.R_TRIG` 检边沿 → `.Q` 每扫转写一个全局 BOOL 脉冲位（`trigXxx`，脉冲天然单扫有效，无需清零）；定时用局部 BOOL + 内联 `TONR`。
+  - **例外**：`AXIS_REF` 轴引用（Axis_胸背/臀盘/臀腿）由 EtherCAT 设备树/H5U 组态自动生成为全局变量，在 GVL_IoMap 中保留，但不走变量表 CSV 导入。
+  - **导出 InoProShop 变量表 CSV 时**：定时器位按 **BOOL** 录入（不是 TON）；`TRIG.R_TRIG` 实例录"功能块实例"表（类型 `TRIG.R_TRIG`），不进普通变量表。
 - 三轴块、错误条目、参数块统一结构体，三轴复用同一映射，避免三份分叉。
 - 常量（状态码、错误码、命令位、步骤码）集中在 `CONST_Definitions.st`，禁止魔法数字。
 - 命令位/状态位用具名常量，与 JSON 中的变量名保持一致，便于双向追溯。

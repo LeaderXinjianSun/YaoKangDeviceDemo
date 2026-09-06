@@ -20,30 +20,31 @@ IF bHardEstop THEN
 ELSIF bSoftEstop THEN
     iState := ST_SOFT_ESTOP;
 ELSE
+    (* H5U：CASE 标签须用字面整数（具名常量按变量处理会报错），行尾注释码值 *)
     CASE iState OF
-        ST_INIT:
+        0: // ST_INIT
             (* 上电引导：P6 在此做参数加载/电源/健康检查后转 READY_CHECK *)
             iInitTimer := iInitTimer + 1;
             IF iInitTimer > 10 THEN
                 iState := ST_STANDBY;    (* P6: 先转 ST_READY_CHECK，资格齐再 STANDBY *)
             END_IF;
 
-        ST_STANDBY:
+        10: // ST_STANDBY
             (* TODO P6: 按 Sys.Cmd 请求门控切换
                bHomingReq→ST_HOMING、bStartSelfTestReq→ST_SELFTEST、
                trigStart/AUTORUN 资格→ST_AUTORUN、工程师服务→ST_SERVICE、
                bCalibrateReq→ST_CALIBRATE、bResetReq→ST_RESET *)
             ;
 
-        ST_HARD_ESTOP, ST_SOFT_ESTOP:
+        120, 110: // ST_HARD_ESTOP / ST_SOFT_ESTOP
             (* 急停恢复：急停解除 + 复位请求后转 RESET 收口，再回 STANDBY *)
             IF (NOT bSafetyStop) AND HMI.Sys.Cmd.bResetReq THEN
                 iState := ST_RESET;
             END_IF;
 
-        (* TODO P6: ST_READY_CHECK / ST_SELFTEST / ST_SERVICE_REQUIRED /
-           ST_AUTORUN / ST_SERVICE / ST_HOMING / ST_CALIBRATE / ST_RESET /
-           ST_STOPPING / ST_PARAM_LIMITED 完整仲裁与门控。 *)
+        (* TODO P6: 3 READY_CHECK / 5 SELFTEST / 15 SERVICE_REQUIRED /
+           20 AUTORUN / 30 SERVICE / 40 HOMING / 45 CALIBRATE / 50 RESET /
+           60 STOPPING / 998 PARAM_LIMITED 完整仲裁与门控。 *)
     ELSE
         iState := ST_INIT;
     END_CASE;
