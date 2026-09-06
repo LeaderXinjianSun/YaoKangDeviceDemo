@@ -1,0 +1,5 @@
+序号,成员变量名,数据类型,注释,
+1,diDeviceNoRaw,DINT, 原始设备编号 (工厂烧录/维护配置),
+2,iMacWord0,INT,PLC MAC 地址字 0 (= _Ethernet.MACAddress[0])    iMacWord1           : INT;      // PLC MAC 地址字 1 (= _Ethernet.MACAddress[1]),
+3,iMacWord1,INT,,
+4,iMacWord2,INT,,
