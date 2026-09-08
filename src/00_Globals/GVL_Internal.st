@@ -121,7 +121,10 @@ VAR_GLOBAL
 
     (*--- 扫描监控 ---*)
     (* 看门狗为 BOOL（H5U 内联 TONR 的 Q=> 输出），上移为全局 mnTScanWatchdog（见下方 PRG_Main 分组） *)
-    diScanCount     : DINT;            (* 扫描计数（心跳） *)
+    diScanCount     : DINT;            (* 扫描计数（心跳，任务组态按 10ms；超时/持续计时基准） *)
+    diMsTick        : DINT;            (* 毫秒运行刻度（上电起 ms，MONITOR 每扫 +扫描周期）：事件时间戳源。
+                                          非真实日历时钟；日志若需年月日时分秒，待现场引入 RTC 库 FB
+                                          （InoProShop 平台符号以现场库为准，离线不臆造）后再替换。 *)
 
     (*--- 运行统计累计器（P11，HmiOutput 写入 Sys.Runtime；非保持，上电清零） ---*)
     diStatAgingCycles : DINT;          (* 老化循环累计（老化批完成 +目标循环数） *)

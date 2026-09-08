@@ -84,7 +84,9 @@ VAR
     bMoving         : BOOL;             (* 定位/缓冲进行中 *)
     bJogActive      : BOOL;             (* 点动进行中 *)
     rLastTarget     : REAL;             (* 本段目标位置（到位判定） *)
-    diMoveSnap      : DINT;             (* 本段启动扫描计数（超时判定） *)
+    diMoveSnap      : DINT;             (* 本段启动扫描计数（超时判定，跨段每段重置） *)
+    diMoveStartSnap : DINT;             (* 本次离散定位整体启动扫描计数（用时锁存，跨段不重置） *)
+    diMoveTimeLatch : DINT;             (* 最近一次离散定位完成用时 (ms)，完成时锁存 *)
     diOverCnt       : DINT;             (* 超力持续扫描计数（×10ms） *)
     rBiasP          : REAL;             (* 正侧静止基线 (%) *)
     rBiasN          : REAL;             (* 负侧静止基线 (%) *)
@@ -92,6 +94,8 @@ VAR
     bBiasNValid     : BOOL;
     rFiltN          : REAL;             (* 牵引力低通值 (N) *)
     bDrvErrPrev     : BOOL;             (* 驱动器故障锁存（事件边沿用） *)
+    bEncFltMatch    : BOOL;             (* 本扫驱动器码命中编码器反馈类报警（联调填码） *)
+    bEncFltLatch    : BOOL;             (* 编码器故障锁存（bReset 清除，绝对位置不可信） *)
     bOverLatch      : BOOL;             (* 超力锁存（bReset 清除） *)
     bToutReported   : BOOL;             (* 本段超时已报（防重复） *)
     rActPos         : REAL;
@@ -131,6 +135,21 @@ IF (Axis.wServoError <> 0) OR (Axis.wAxisError <> 0) THEN
     END_IF;
 ELSE
     bDrvErr := FALSE;
+END_IF;
+
+(* 1.1 编码器反馈故障：iDrvCode 命中 M900 编码器/反馈类报警码即视为绝对位置不可信。
+       → 置 stStatus.Servo.bEncoderFault，下游 SAFETY 保护停机并报 ERR_AXIS_ENCODER(2002)。
+       TODO 联调：M900(CiA402/EtherCAT) 编码器反馈类报警 Er.xxx 确切码表需依驱动器手册
+                  及台架实测填入下面判定（文档仅有的 Er.101/201/234 为 SV630 举例，不可套用）。
+                  填码前默认不命中（bEncFltMatch:=FALSE），编码器故障链保持断开、不误保护。 *)
+bEncFltMatch := FALSE;
+(* 联调填码示例（待手册/台架确认后启用，并保留有效码）：
+   bEncFltMatch := bDrvErr AND ( (iDrvCode = ErXXX) OR (iDrvCode = ErYYY) ... );
+   （编码器断线/多圈电池掉电/反馈计数异常等均属此列；命中后绝对位置不可信，禁定位） *)
+
+(* 锁存：命中即置位保持；复位脉冲且驱动器故障已消时清除（与 bToutReported 同步复位） *)
+IF bEncFltMatch THEN
+    bEncFltLatch := TRUE;
 END_IF;
 
 (* 静止：已使能且非运动态（速度窗由驱动器 bMotionState 保证） *)
@@ -174,6 +193,7 @@ bDrvErrPrev := bDrvErr;
 IF bReset AND NOT bDrvErr THEN
     bOverLatch    := FALSE;
     bToutReported := FALSE;
+    bEncFltLatch  := FALSE;
     IF iStep = AXST_ERROR THEN
         iStep := AXST_READY;
     END_IF;
@@ -296,6 +316,8 @@ IF NOT bDrvErr THEN
                     Axis.bAbsPos           := TRUE;
                     rLastTarget            := arSegPos[1];
                     diMoveSnap             := diScanCount;
+                    diMoveStartSnap        := diScanCount;
+                    diMoveTimeLatch        := 0;
                     bMoving                := TRUE;
                     bToutReported          := FALSE;
                     iStep                  := AXST_BUFFER;
@@ -314,6 +336,8 @@ IF NOT bDrvErr THEN
                     Axis.bAbsPos          := TRUE;
                     rLastTarget           := rTargetPos;
                     diMoveSnap            := diScanCount;
+                    diMoveStartSnap       := diScanCount;
+                    diMoveTimeLatch       := 0;
                     bMoving               := TRUE;
                     bToutReported        := FALSE;
                     iStep                 := AXST_MOVE;
@@ -331,6 +355,8 @@ IF NOT bDrvErr THEN
                     Axis.bRelPos          := TRUE;
                     rLastTarget           := rActPos + rTargetPos;
                     diMoveSnap            := diScanCount;
+                    diMoveStartSnap       := diScanCount;
+                    diMoveTimeLatch       := 0;
                     bMoving               := TRUE;
                     bToutReported        := FALSE;
                     iStep                 := AXST_MOVE;
@@ -354,11 +380,14 @@ IF NOT bDrvErr THEN
                     diMoveSnap            := diScanCount;
                     bToutReported        := FALSE;
                 ELSE
-                    (* 全部段完成 *)
+                    (* 全部段完成：锁存整体离散运动用时（整体起点→末段到位，ms） *)
+                    diMoveTimeLatch := (diScanCount - diMoveStartSnap) * 10;
                     bMoving := FALSE;
                     iStep   := AXST_READY;
                 END_IF;
             ELSE
+                (* 单段完成：锁存本段离散运动用时（ms） *)
+                diMoveTimeLatch := (diScanCount - diMoveSnap) * 10;
                 bMoving := FALSE;
                 iStep   := AXST_READY;
             END_IF;
@@ -399,7 +428,7 @@ stStatus.Servo.rActVelocity         := rActVel;
 stStatus.Servo.rActTorque           := rActTorque;
 stStatus.Servo.iDriveErrorCode      := iDrvCode;
 stStatus.Servo.iErrorCode           := iFaultCode;
-stStatus.Servo.diDiscreteMotionTime := (diScanCount - diMoveSnap) * 10;   (* TODO: 运动用时，完成时锁存 *)
+stStatus.Servo.diDiscreteMotionTime := diMoveTimeLatch;   (* 最近一次离散定位完成用时(ms)，完成时锁存 *)
 stStatus.Servo.bEnabled             := bPowerState;
 stStatus.Servo.bReady               := bPowerState AND NOT bDrvErr;
 stStatus.Servo.bBusy                := bMotionState OR bMoving OR bJogActive;
@@ -415,7 +444,7 @@ stStatus.Servo.bPosLimit            := Axis.bphlimit OR Axis.bpslimit;
 stStatus.Servo.bNegLimit            := Axis.bnhlimit OR Axis.bnslimit;
 stStatus.Servo.bError               := bDrvErr OR (iStep = AXST_ERROR);
 stStatus.Servo.bStopping            := bStop OR bSafetyStop OR (Axis.wPLCOpenState = 3);
-stStatus.Servo.bEncoderFault        := FALSE;   (* TODO 联调：驱动器编码器故障码映射 *)
+stStatus.Servo.bEncoderFault        := bEncFltLatch;   (* 编码器反馈故障锁存（码表见 1.1 TODO，联调填码） *)
 
 stStatus.Force.rBiasPosPct          := rBiasP;
 stStatus.Force.rBiasNegPct          := rBiasN;

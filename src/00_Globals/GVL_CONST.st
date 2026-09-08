@@ -192,6 +192,7 @@ VAR_GLOBAL CONSTANT
     AXST_ERROR           : INT := 9;   (* 轴错误态（驱动器故障/超时） *)
 
     (*--- POWER 分时上电时序（按 10ms 扫描周期推算，任务组态确认后统一修正） ---*)
+    SCAN_PERIOD_MS      : DINT := 10;     (* 主任务扫描周期 (ms)，任务组态确认后统一修正；diMsTick 累加基准 *)
     PWR_STAGGER_SCAN    : DINT := 50;     (* 逐轴使能间隔扫描数（50 扫≈500ms，防浪涌） *)
     PWR_ENABLE_TIMEOUT  : DINT := 300;    (* 单轴使能确认超时扫描数（300 扫≈3s，超时报 1101） *)
 

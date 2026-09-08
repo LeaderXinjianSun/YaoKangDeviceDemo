@@ -16,7 +16,8 @@
     - 队列仅滚动追加，不随复位删除；bOverflow 记录溢出。
   说明：HMI.Sys.Display 的 iErrorCode/iErrorLevel/iErrorSubCode/iErrorSource 由
         HMI_OUTPUT 从 Sys.Error 镜像（单写源：Display 归 HMI_OUTPUT）。
-        时间戳暂用 diScanCount（心跳），RTC 毫秒时钟落地后替换（见 MONITOR TODO）。
+        时间戳为毫秒运行刻度 diMsTick（上电起 ms，MONITOR 每扫累加 SCAN_PERIOD_MS）；
+        非日历时钟，日志若需年月日时分秒待现场引入 RTC 库 FB 后替换（见 GVL_Internal diMsTick TODO）。
 ==========================================================================*)
 PROGRAM PRG_ErrorManager
 
@@ -29,7 +30,7 @@ IF gFaultSubmit THEN
     HMI.Sys.ErrorQueue.aEntries[HMI.Sys.ErrorQueue.iTail].iCode       := gFaultCode;
     HMI.Sys.ErrorQueue.aEntries[HMI.Sys.ErrorQueue.iTail].iSource     := gFaultSource;
     HMI.Sys.ErrorQueue.aEntries[HMI.Sys.ErrorQueue.iTail].iVal1       := gFaultVal1;
-    HMI.Sys.ErrorQueue.aEntries[HMI.Sys.ErrorQueue.iTail].diTimestamp := diScanCount;  (* TODO P12: 换 RTC 毫秒时钟 *)
+    HMI.Sys.ErrorQueue.aEntries[HMI.Sys.ErrorQueue.iTail].diTimestamp := diMsTick;  (* 事件毫秒刻度（上电起 ms）；日历 RTC 待现场引入库 FB，见 GVL_Internal diMsTick TODO *)
 
     HMI.Sys.ErrorQueue.iTail := HMI.Sys.ErrorQueue.iTail + 1;
     IF HMI.Sys.ErrorQueue.iTail >= 9 THEN

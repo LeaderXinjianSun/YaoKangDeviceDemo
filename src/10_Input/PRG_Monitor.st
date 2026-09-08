@@ -11,8 +11,9 @@
 ==========================================================================*)
 PROGRAM PRG_Monitor
 
-(*--- 扫描心跳 ---*)
+(*--- 扫描心跳 + 毫秒运行刻度（事件时间戳源；非日历 RTC，见 GVL_Internal diMsTick 说明） ---*)
 diScanCount := diScanCount + 1;
+diMsTick    := diMsTick + SCAN_PERIOD_MS;
 
 (*--- 推杆反馈窗口（D936–D940）：mm 位置/有效位镜像（HC_Counter，环2 采集） ---*)
 HMI.TailTiltAdFeedback.diPosMm   := REAL_TO_DINT(rPusherPosMm);
