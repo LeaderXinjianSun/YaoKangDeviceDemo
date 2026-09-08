@@ -80,7 +80,7 @@ VAR_OUTPUT
 END_VAR
 VAR
     iStep           : INT;              (* 运动状态机 AXST_* *)
-    iBufSeg         : INT;              (* 缓冲当前段（1..iSegCount） *)
+    iBufSeg         : INT;              (* 缓冲当前段游标（base 0：0..iSegCount-1） *)
     bMoving         : BOOL;             (* 定位/缓冲进行中 *)
     bJogActive      : BOOL;             (* 点动进行中 *)
     rLastTarget     : REAL;             (* 本段目标位置（到位判定） *)
@@ -306,15 +306,15 @@ IF NOT bDrvErr THEN
                 IF NOT bZeroCommRetain THEN
                     bSwRej := TRUE; iRejCode := ERR_AXIS_CMD_ILLEGAL;
                 ELSE
-                    (* 首段立即下发绝对定位命令 *)
-                    iBufSeg                := 1;
-                    Axis.fTarPosition1     := arSegPos[1];
-                    Axis.fTarVelocity1     := arSegVel[1];
+                    (* 首段立即下发绝对定位命令（段游标 base 0：0=首段） *)
+                    iBufSeg                := 0;
+                    Axis.fTarPosition1     := arSegPos[0];
+                    Axis.fTarVelocity1     := arSegVel[0];
                     Axis.fTarAcceleration1 := rAcc;
                     Axis.fTarDecelaration1 := rDec;
                     Axis.wCurveType1       := 0;
                     Axis.bAbsPos           := TRUE;
-                    rLastTarget            := arSegPos[1];
+                    rLastTarget            := arSegPos[0];
                     diMoveSnap             := diScanCount;
                     diMoveStartSnap        := diScanCount;
                     diMoveTimeLatch        := 0;
@@ -367,8 +367,8 @@ IF NOT bDrvErr THEN
         (* 5.6 段推进与完成判定（运动中驱动器 bMotionState 回落且到位 → 本段完成） *)
         IF bMoving AND NOT bMotionState AND (ABS(rActPos - rLastTarget) <= rTolerance) THEN
             IF iStep = AXST_BUFFER THEN
-                IF iBufSeg < iSegCount THEN
-                    (* 下一段：目标/速度取自段表，发绝对定位脉冲 *)
+                IF iBufSeg < (iSegCount - 1) THEN
+                    (* 下一段：目标/速度取自段表，发绝对定位脉冲（段表 base 0，合法下标 0..iSegCount-1） *)
                     iBufSeg               := iBufSeg + 1;
                     Axis.fTarPosition1    := arSegPos[iBufSeg];
                     Axis.fTarVelocity1    := arSegVel[iBufSeg];

@@ -43,7 +43,7 @@ END_IF;
 IF NOT bAllAxesAtInit THEN
     mmDiMask := mmDiMask OR SHL(DINT#1, READY_BIT_POS);     (* bit4 未在初始位 *)
 END_IF;
-IF NOT (retainZeroComm[1] AND retainZeroComm[2] AND retainZeroComm[3] AND retainTailZeroComm) THEN
+IF NOT (retainZeroComm[0] AND retainZeroComm[1] AND retainZeroComm[2] AND retainTailZeroComm) THEN
     mmDiMask := mmDiMask OR SHL(DINT#1, READY_BIT_ZERO);    (* bit0 未建零 *)
 END_IF;
 mmBReadyAll := (mmDiMask = 0);
@@ -88,7 +88,7 @@ ELSIF (iState = ST_STANDBY) OR (iState = ST_SERVICE_REQUIRED) THEN
     (* 待机/需服务为操作入口态：按就绪缺项给出最高优先原因（掩码细化见 diReadyCheckResult） *)
     IF NOT HMI.Sys.Status.bPowerOn THEN
         iBlockReason := BLOCK_REASON_POWER;      (* 4504 硬件未上电 *)
-    ELSIF NOT (retainZeroComm[1] AND retainZeroComm[2] AND retainZeroComm[3] AND retainTailZeroComm) THEN
+    ELSIF NOT (retainZeroComm[0] AND retainZeroComm[1] AND retainZeroComm[2] AND retainTailZeroComm) THEN
         iBlockReason := BLOCK_REASON_ZERO;       (* 4505 未建零，需维护建零 *)
     ELSIF NOT bRunParamValid OR NOT bParamBootDone THEN
         iBlockReason := BLOCK_REASON_PARAM;      (* 4506 运行参数无效 *)
@@ -292,8 +292,8 @@ END_IF;
            推杆点动任何急停态均清零（紧急回零不用推杆）。
   ==========================================================================*)
 IF NOT ((iState = ST_STANDBY) OR (iState = ST_SERVICE) OR (iState = ST_SOFT_ESTOP)) THEN
-    axisJogPos[1] := FALSE;  axisJogPos[2] := FALSE;  axisJogPos[3] := FALSE;
-    axisJogNeg[1] := FALSE;  axisJogNeg[2] := FALSE;  axisJogNeg[3] := FALSE;
+    axisJogPos[0] := FALSE;  axisJogPos[1] := FALSE;  axisJogPos[2] := FALSE;
+    axisJogNeg[0] := FALSE;  axisJogNeg[1] := FALSE;  axisJogNeg[2] := FALSE;
 END_IF;
 (* 推杆点动：非待机/维护一律清零（紧急回零不动作推杆） *)
 IF NOT ((iState = ST_STANDBY) OR (iState = ST_SERVICE)) THEN

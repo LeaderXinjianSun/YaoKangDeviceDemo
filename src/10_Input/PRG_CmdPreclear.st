@@ -57,8 +57,8 @@ trigPushPreset      := FALSE;
 trigPushResetError  := FALSE;
 
 (*--- 4. 三轴脉冲位数组兜底清扫（电平 axisEnableReq/axisJogPos/axisJogNeg 不扫） ---*)
-FOR cpIAxis := 1 TO 3 DO
-    FOR cpICmd := 1 TO AXCMD_MAX DO
+FOR cpIAxis := 0 TO 2 DO
+    FOR cpICmd := 0 TO AXCMD_MAX - 1 DO
         axisPulse[cpIAxis, cpICmd] := FALSE;
     END_FOR;
 END_FOR;

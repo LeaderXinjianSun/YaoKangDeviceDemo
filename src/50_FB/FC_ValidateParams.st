@@ -53,9 +53,9 @@ IF iBlock = 1 THEN
            (HMI.Condition.Param.SeatTwist.iCycleModeLen > 16) THEN
             FC_ValidateParams := FALSE; iErrCode := ERR_PARAM_VALUE; iErrAxis := AXIS_ID_SEAT; iErrField := 4; RETURN;
         END_IF;
-        FOR vpI := 1 TO HMI.Condition.Param.SeatTwist.iSegmentCount DO
+        FOR vpI := 0 TO HMI.Condition.Param.SeatTwist.iSegmentCount - 1 DO
             IF HMI.Condition.Param.SeatTwist.arVelocity[vpI] <= 0.0 THEN
-                FC_ValidateParams := FALSE; iErrCode := ERR_PARAM_VALUE; iErrAxis := AXIS_ID_SEAT; iErrField := 100 + vpI; RETURN;
+                FC_ValidateParams := FALSE; iErrCode := ERR_PARAM_VALUE; iErrAxis := AXIS_ID_SEAT; iErrField := 101 + vpI; RETURN;
             END_IF;
         END_FOR;
     END_IF;
@@ -76,9 +76,9 @@ IF iBlock = 1 THEN
            (HMI.Condition.Param.LegAngle.iCycleModeLen > 16) THEN
             FC_ValidateParams := FALSE; iErrCode := ERR_PARAM_VALUE; iErrAxis := AXIS_ID_LEG; iErrField := 4; RETURN;
         END_IF;
-        FOR vpI := 1 TO HMI.Condition.Param.LegAngle.iSegmentCount DO
+        FOR vpI := 0 TO HMI.Condition.Param.LegAngle.iSegmentCount - 1 DO
             IF HMI.Condition.Param.LegAngle.arVelocity[vpI] <= 0.0 THEN
-                FC_ValidateParams := FALSE; iErrCode := ERR_PARAM_VALUE; iErrAxis := AXIS_ID_LEG; iErrField := 100 + vpI; RETURN;
+                FC_ValidateParams := FALSE; iErrCode := ERR_PARAM_VALUE; iErrAxis := AXIS_ID_LEG; iErrField := 101 + vpI; RETURN;
             END_IF;
         END_FOR;
     END_IF;
@@ -99,9 +99,9 @@ IF iBlock = 1 THEN
            (HMI.Condition.Param.ChestImpact.iCycleModeLen > 16) THEN
             FC_ValidateParams := FALSE; iErrCode := ERR_PARAM_VALUE; iErrAxis := AXIS_ID_CHEST; iErrField := 4; RETURN;
         END_IF;
-        FOR vpI := 1 TO HMI.Condition.Param.ChestImpact.iSegmentCount DO
+        FOR vpI := 0 TO HMI.Condition.Param.ChestImpact.iSegmentCount - 1 DO
             IF HMI.Condition.Param.ChestImpact.arVelocity[vpI] <= 0.0 THEN
-                FC_ValidateParams := FALSE; iErrCode := ERR_PARAM_VALUE; iErrAxis := AXIS_ID_CHEST; iErrField := 100 + vpI; RETURN;
+                FC_ValidateParams := FALSE; iErrCode := ERR_PARAM_VALUE; iErrAxis := AXIS_ID_CHEST; iErrField := 101 + vpI; RETURN;
             END_IF;
         END_FOR;
     END_IF;

@@ -401,8 +401,8 @@ CASE iState OF
 
             40: // ST_ANGLE 成角（推杆自动定位到自检角 ST_ANGLE_DEG）
                 IF rDoneEdge.Q THEN
-                    (* 转换点：初始化三轴摆动（轴1 相位0），装轴快照转 50 *)
-                    trIStAxis  := 1;
+                    (* 转换点：初始化三轴摆动（轴0 Chest 相位0），装轴快照转 50 *)
+                    trIStAxis  := 0;
                     trIStPhase := 0;
                     trDiStSnap := diScanCount;
                     trIStepSt  := 50;
@@ -422,13 +422,13 @@ CASE iState OF
                    奇数相：见离开静止→相位+1（不落令）；见回静止→相位+1（回落偶数，
                    下扫发下一段）。由此保证"发令→离静止→回静止"才推进，杜绝叠令。
                    每轴 3 段相对位移：+2° / -4° / +2°（净回原位）。 *)
-                IF trIStAxis = 1 THEN
+                IF trIStAxis = 0 THEN
                     IF (trIStPhase MOD 2) = 0 THEN
                         (* 待发：轴静止才发本段 MoveRel *)
                         IF HMI.ChestImpact.Status.Servo.bStandStill THEN
-                            HMI.ChestImpact.Motion.rTargetVel := runAxis[1].rMaxVel * 0.5;
-                            HMI.ChestImpact.Motion.rAcc       := runAxis[1].rMaxAcc;
-                            HMI.ChestImpact.Motion.rDec       := runAxis[1].rMaxDec;
+                            HMI.ChestImpact.Motion.rTargetVel := runAxis[0].rMaxVel * 0.5;
+                            HMI.ChestImpact.Motion.rAcc       := runAxis[0].rMaxAcc;
+                            HMI.ChestImpact.Motion.rDec       := runAxis[0].rMaxDec;
                             IF (trIStPhase = 0) OR (trIStPhase = 4) THEN
                                 HMI.ChestImpact.Motion.rTargetPos := ST_SWING_DEG;
                             ELSE
@@ -448,7 +448,7 @@ CASE iState OF
                         END_IF;
                     END_IF;
                     IF trIStPhase >= 6 THEN
-                        trIStAxis  := 2;
+                        trIStAxis  := 1;
                         trIStPhase := 0;
                     END_IF;
                     IF HMI.ChestImpact.Status.bError THEN
@@ -457,12 +457,12 @@ CASE iState OF
                         trIStepSt := 200;
                     END_IF;
 
-                ELSIF trIStAxis = 2 THEN
+                ELSIF trIStAxis = 1 THEN
                     IF (trIStPhase MOD 2) = 0 THEN
                         IF HMI.SeatTwist.Status.Servo.bStandStill THEN
-                            HMI.SeatTwist.Motion.rTargetVel := runAxis[2].rMaxVel * 0.5;
-                            HMI.SeatTwist.Motion.rAcc       := runAxis[2].rMaxAcc;
-                            HMI.SeatTwist.Motion.rDec       := runAxis[2].rMaxDec;
+                            HMI.SeatTwist.Motion.rTargetVel := runAxis[1].rMaxVel * 0.5;
+                            HMI.SeatTwist.Motion.rAcc       := runAxis[1].rMaxAcc;
+                            HMI.SeatTwist.Motion.rDec       := runAxis[1].rMaxDec;
                             IF (trIStPhase = 0) OR (trIStPhase = 4) THEN
                                 HMI.SeatTwist.Motion.rTargetPos := ST_SWING_DEG;
                             ELSE
@@ -480,7 +480,7 @@ CASE iState OF
                         END_IF;
                     END_IF;
                     IF trIStPhase >= 6 THEN
-                        trIStAxis  := 3;
+                        trIStAxis  := 2;
                         trIStPhase := 0;
                     END_IF;
                     IF HMI.SeatTwist.Status.bError THEN
@@ -489,12 +489,12 @@ CASE iState OF
                         trIStepSt := 200;
                     END_IF;
 
-                ELSIF trIStAxis = 3 THEN
+                ELSIF trIStAxis = 2 THEN
                     IF (trIStPhase MOD 2) = 0 THEN
                         IF HMI.LegAngle.Status.Servo.bStandStill THEN
-                            HMI.LegAngle.Motion.rTargetVel := runAxis[3].rMaxVel * 0.5;
-                            HMI.LegAngle.Motion.rAcc       := runAxis[3].rMaxAcc;
-                            HMI.LegAngle.Motion.rDec       := runAxis[3].rMaxDec;
+                            HMI.LegAngle.Motion.rTargetVel := runAxis[2].rMaxVel * 0.5;
+                            HMI.LegAngle.Motion.rAcc       := runAxis[2].rMaxAcc;
+                            HMI.LegAngle.Motion.rDec       := runAxis[2].rMaxDec;
                             IF (trIStPhase = 0) OR (trIStPhase = 4) THEN
                                 HMI.LegAngle.Motion.rTargetPos := ST_SWING_DEG;
                             ELSE
@@ -526,7 +526,11 @@ CASE iState OF
                 (* 单轴单循环超时 800 扫 ≈ 8s *)
                 IF (diScanCount - trDiStSnap) >= ST_AXIS_TOUT_SCAN THEN
                     trBFaultLat := TRUE; trILatLevel := 2; trILatCode := ERR_SELFTEST_AXIS;
-                    trILatSource := SRC_SELFTEST; trILatSub := trIStAxis;
+                    trILatSource := SRC_SELFTEST;
+                    (* 内部下标 0/1/2 → 故障轴号 AXIS_ID_CHEST/SEAT/LEG *)
+                    IF trIStAxis = 0 THEN trILatSub := AXIS_ID_CHEST;
+                    ELSIF trIStAxis = 1 THEN trILatSub := AXIS_ID_SEAT;
+                    ELSE trILatSub := AXIS_ID_LEG; END_IF;
                     trIStepSt := 200;
                 END_IF;
 
@@ -594,10 +598,10 @@ CASE iState OF
                 (* 转换点：装载初始位/清完成标志/装快照。未建零（retain 无效）时
                    MoveAbs 会被 FB 以 2006 拒，故先判参考：无效直接 4002 失败。 *)
                 trDiSnap := diScanCount;
+                trRInit[0] := runAxis[0].rInitPos;
                 trRInit[1] := runAxis[1].rInitPos;
                 trRInit[2] := runAxis[2].rInitPos;
-                trRInit[3] := runAxis[3].rInitPos;
-                trBAxisDone[1] := FALSE; trBAxisDone[2] := FALSE; trBAxisDone[3] := FALSE;
+                trBAxisDone[0] := FALSE; trBAxisDone[1] := FALSE; trBAxisDone[2] := FALSE;
                 IF NOT bAllAxesRef THEN
                     trBFaultLat := TRUE; trILatLevel := 2; trILatCode := ERR_HOME_REFUSE;
                     trILatSource := SRC_HOMING; trILatSub := 0;
@@ -606,65 +610,65 @@ CASE iState OF
                     trIStepHom := 4010;
                 END_IF;
 
-            4010: // HOMSEQ_MOVE 发 MoveAbs（并行模式全发；顺序模式首发轴1）
+            4010: // HOMSEQ_MOVE 发 MoveAbs（并行模式全发；顺序模式首发轴0 Chest）
                 IF runHoming.iHomingMode = HOM_MODE_PARALLEL THEN
                     (* 并行：三轴同扫各发 1 个 MoveAbs 脉冲，转 WAIT *)
-                    HMI.ChestImpact.Motion.rTargetPos := trRInit[1];
+                    HMI.ChestImpact.Motion.rTargetPos := trRInit[0];
                     HMI.ChestImpact.Motion.rTargetVel := runHoming.rChestJogVel;
                     HMI.ChestImpact.Cmd.bMoveAbs := TRUE;
-                    HMI.SeatTwist.Motion.rTargetPos := trRInit[2];
+                    HMI.SeatTwist.Motion.rTargetPos := trRInit[1];
                     HMI.SeatTwist.Motion.rTargetVel := runHoming.rSeatJogVel;
                     HMI.SeatTwist.Cmd.bMoveAbs := TRUE;
-                    HMI.LegAngle.Motion.rTargetPos := trRInit[3];
+                    HMI.LegAngle.Motion.rTargetPos := trRInit[2];
                     HMI.LegAngle.Motion.rTargetVel := runHoming.rLegJogVel;
                     HMI.LegAngle.Cmd.bMoveAbs := TRUE;
-                    trIAxis    := 4;   (* 并行无活动轴 *)
+                    trIAxis    := -1;   (* 并行无活动轴（-1 哨兵） *)
                     trIStepHom := 4020;
                 ELSE
-                    (* 顺序：首发轴1 Chest，转 WAIT 逐轴补发 *)
-                    HMI.ChestImpact.Motion.rTargetPos := trRInit[1];
+                    (* 顺序：首发轴0 Chest，转 WAIT 逐轴补发 *)
+                    HMI.ChestImpact.Motion.rTargetPos := trRInit[0];
                     HMI.ChestImpact.Motion.rTargetVel := runHoming.rChestJogVel;
                     HMI.ChestImpact.Cmd.bMoveAbs := TRUE;
-                    trIAxis    := 1;
+                    trIAxis    := 0;
                     trIStepHom := 4020;
                 END_IF;
 
             4020: // HOMSEQ_WAIT 等待全轴到位（4001 超时 / 4003 轴失败）
                 (* 顺序模式：活动轴到位静止后补发下一轴（转换点内联发脉冲） *)
-                IF (runHoming.iHomingMode = HOM_MODE_SEQUENTIAL) AND (trIAxis = 1) THEN
+                IF (runHoming.iHomingMode = HOM_MODE_SEQUENTIAL) AND (trIAxis = 0) THEN
                     IF HMI.ChestImpact.Status.bAtInit AND HMI.ChestImpact.Status.Servo.bStandStill THEN
-                        trBAxisDone[1] := TRUE;
-                        HMI.SeatTwist.Motion.rTargetPos := trRInit[2];
+                        trBAxisDone[0] := TRUE;
+                        HMI.SeatTwist.Motion.rTargetPos := trRInit[1];
                         HMI.SeatTwist.Motion.rTargetVel := runHoming.rSeatJogVel;
                         HMI.SeatTwist.Cmd.bMoveAbs := TRUE;
+                        trIAxis := 1;
+                    END_IF;
+                ELSIF (runHoming.iHomingMode = HOM_MODE_SEQUENTIAL) AND (trIAxis = 1) THEN
+                    IF HMI.SeatTwist.Status.bAtInit AND HMI.SeatTwist.Status.Servo.bStandStill THEN
+                        trBAxisDone[1] := TRUE;
+                        HMI.LegAngle.Motion.rTargetPos := trRInit[2];
+                        HMI.LegAngle.Motion.rTargetVel := runHoming.rLegJogVel;
+                        HMI.LegAngle.Cmd.bMoveAbs := TRUE;
                         trIAxis := 2;
                     END_IF;
                 ELSIF (runHoming.iHomingMode = HOM_MODE_SEQUENTIAL) AND (trIAxis = 2) THEN
-                    IF HMI.SeatTwist.Status.bAtInit AND HMI.SeatTwist.Status.Servo.bStandStill THEN
-                        trBAxisDone[2] := TRUE;
-                        HMI.LegAngle.Motion.rTargetPos := trRInit[3];
-                        HMI.LegAngle.Motion.rTargetVel := runHoming.rLegJogVel;
-                        HMI.LegAngle.Cmd.bMoveAbs := TRUE;
-                        trIAxis := 3;
-                    END_IF;
-                ELSIF (runHoming.iHomingMode = HOM_MODE_SEQUENTIAL) AND (trIAxis = 3) THEN
                     IF HMI.LegAngle.Status.bAtInit AND HMI.LegAngle.Status.Servo.bStandStill THEN
-                        trBAxisDone[3] := TRUE;
-                        trIAxis := 4;
+                        trBAxisDone[2] := TRUE;
+                        trIAxis := -1;
                     END_IF;
                 END_IF;
 
                 (* 轴失败：任一轴 bError（2005 超时/驱动故障），子码=故障轴号；
                    锁存 Critical 并停留本步（不进 DONE），ModeManager 见 Error 转 RESET。 *)
-                IF HMI.ChestImpact.Status.bError AND NOT trBAxisDone[1] THEN
+                IF HMI.ChestImpact.Status.bError AND NOT trBAxisDone[0] THEN
                     trBFaultLat := TRUE; trILatLevel := 2; trILatCode := ERR_HOME_AXIS;
                     trILatSource := SRC_HOMING; trILatSub := AXIS_ID_CHEST;
                     iPhase := 0;
-                ELSIF HMI.SeatTwist.Status.bError AND NOT trBAxisDone[2] THEN
+                ELSIF HMI.SeatTwist.Status.bError AND NOT trBAxisDone[1] THEN
                     trBFaultLat := TRUE; trILatLevel := 2; trILatCode := ERR_HOME_AXIS;
                     trILatSource := SRC_HOMING; trILatSub := AXIS_ID_SEAT;
                     iPhase := 0;
-                ELSIF HMI.LegAngle.Status.bError AND NOT trBAxisDone[3] THEN
+                ELSIF HMI.LegAngle.Status.bError AND NOT trBAxisDone[2] THEN
                     trBFaultLat := TRUE; trILatLevel := 2; trILatCode := ERR_HOME_AXIS;
                     trILatSource := SRC_HOMING; trILatSub := AXIS_ID_LEG;
                     iPhase := 0;
@@ -715,9 +719,9 @@ CASE iState OF
                     HMI.ChestImpact.Cmd.bZeroCommission := TRUE;
                     HMI.SeatTwist.Cmd.bZeroCommission   := TRUE;
                     HMI.LegAngle.Cmd.bZeroCommission    := TRUE;
+                    bZeroCommSetReq[0] := TRUE;
                     bZeroCommSetReq[1] := TRUE;
                     bZeroCommSetReq[2] := TRUE;
-                    bZeroCommSetReq[3] := TRUE;
                     (* 推杆标定（无参考时）：HMI 脉冲→trigPushCalibrate；
                        标定完成由环10 置 bPushCalibDoneLatch，环8 写 retainTailZeroComm *)
                     IF NOT HMI.TailTilt.Status.bReferenceValid THEN
@@ -774,11 +778,11 @@ CASE iState OF
                     HMI.SeatTwist.Cmd.bStop   := TRUE;
                     HMI.LegAngle.Cmd.bStop    := TRUE;
                 ELSE
-                    HMI.ChestImpact.Motion.rTargetPos := runAxis[1].rInitPos;
+                    HMI.ChestImpact.Motion.rTargetPos := runAxis[0].rInitPos;
                     HMI.ChestImpact.Motion.rTargetVel := runHoming.rChestJogVel;
-                    HMI.SeatTwist.Motion.rTargetPos   := runAxis[2].rInitPos;
+                    HMI.SeatTwist.Motion.rTargetPos   := runAxis[1].rInitPos;
                     HMI.SeatTwist.Motion.rTargetVel   := runHoming.rSeatJogVel;
-                    HMI.LegAngle.Motion.rTargetPos    := runAxis[3].rInitPos;
+                    HMI.LegAngle.Motion.rTargetPos    := runAxis[2].rInitPos;
                     HMI.LegAngle.Motion.rTargetVel    := runHoming.rLegJogVel;
                     HMI.ChestImpact.Cmd.bMoveAbs := TRUE;
                     HMI.SeatTwist.Cmd.bMoveAbs   := TRUE;
@@ -804,25 +808,25 @@ CASE iState OF
                 (* 转换点：装载三轴初始位/速度/接近区/迟滞、清重试与防夹，转 1110。
                    装载仅在进入状态首扫做一次（trBStateEntry 已复位子步到 1100）。 *)
                 IF trBStateEntry THEN
-                    trIEmhAxis    := 1;
-                    trIRetry[1]   := 0; trIRetry[2]   := 0; trIRetry[3]   := 0;
+                    trIEmhAxis    := 0;
+                    trIRetry[0]   := 0; trIRetry[1]   := 0; trIRetry[2]   := 0;
                     trBEmhPinch   := FALSE;
                     trDiSnap      := diScanCount;   (* 释放超时基准，防陈旧快照误触发 *)
+                    trRInit[0]    := runAxis[0].rInitPos;
                     trRInit[1]    := runAxis[1].rInitPos;
                     trRInit[2]    := runAxis[2].rInitPos;
-                    trRInit[3]    := runAxis[3].rInitPos;
-                    trRJogV[1]    := runHoming.rChestJogVel;
-                    trRJogV[2]    := runHoming.rSeatJogVel;
-                    trRJogV[3]    := runHoming.rLegJogVel;
-                    trRCrawlV[1]  := runHoming.rChestCrawlVel;
-                    trRCrawlV[2]  := runHoming.rSeatCrawlVel;
-                    trRCrawlV[3]  := runHoming.rLegCrawlVel;
-                    trRApproach[1]:= runHoming.rChestApproachZone;
-                    trRApproach[2]:= runHoming.rSeatApproachZone;
-                    trRApproach[3]:= runHoming.rLegApproachZone;
-                    trRHyst[1]    := runHoming.rChestHysteresis;
-                    trRHyst[2]    := runHoming.rSeatHysteresis;
-                    trRHyst[3]    := runHoming.rLegHysteresis;
+                    trRJogV[0]    := runHoming.rChestJogVel;
+                    trRJogV[1]    := runHoming.rSeatJogVel;
+                    trRJogV[2]    := runHoming.rLegJogVel;
+                    trRCrawlV[0]  := runHoming.rChestCrawlVel;
+                    trRCrawlV[1]  := runHoming.rSeatCrawlVel;
+                    trRCrawlV[2]  := runHoming.rLegCrawlVel;
+                    trRApproach[0]:= runHoming.rChestApproachZone;
+                    trRApproach[1]:= runHoming.rSeatApproachZone;
+                    trRApproach[2]:= runHoming.rLegApproachZone;
+                    trRHyst[0]    := runHoming.rChestHysteresis;
+                    trRHyst[1]    := runHoming.rSeatHysteresis;
+                    trRHyst[2]    := runHoming.rLegHysteresis;
                 END_IF;
                 (* 等软急停减速电平释放（SafetyManager 停稳滑行后自动清 smBSoftStopActive，
                    使 bSafetyStop 软急停成分变 FALSE）；FB 此时才接受 Jog。 *)
@@ -837,12 +841,12 @@ CASE iState OF
                 END_IF;
 
             1110: // EMH_JOG_MAIN 主速/爬行 Jog 回初始位（迟滞到位判停 + 防夹）
-                IF trIEmhAxis > 3 THEN
+                IF trIEmhAxis < 0 THEN
                     trIStepEmh := 1190;
                 ELSIF (trBFaultLat AND (trILatLevel = 2))
                    OR ((runHoming.diEmergencyTimeout > 0)
                        AND ((diScanCount - trDiSnap) * 10 >= runHoming.diEmergencyTimeout)
-                       AND (trIEmhAxis <= 3)) THEN
+                       AND (trIEmhAxis >= 0)) THEN
                     (* Critical 已锁存（前轮遗留）或本扫单轴超时已到：不进 Jog 驱动，
                        三轴撤力；超时锁存由下方超时块同扫置位上报，等 ModeManager
                        见 Critical 转 RESET（1190 亦撤力，安全） *)
@@ -853,12 +857,12 @@ CASE iState OF
                     HMI.LegAngle.Cmd.bJogPos    := FALSE;
                     HMI.LegAngle.Cmd.bJogNeg    := FALSE;
                 ELSE
-                    IF trIEmhAxis = 1 THEN
+                    IF trIEmhAxis = 0 THEN
                         (* 到位（迟滞窗口内）：撤力，下一轴 *)
-                        IF ABS(HMI.ChestImpact.Status.Servo.rActPosition - trRInit[1]) <= trRHyst[1] THEN
+                        IF ABS(HMI.ChestImpact.Status.Servo.rActPosition - trRInit[0]) <= trRHyst[0] THEN
                             HMI.ChestImpact.Cmd.bJogPos := FALSE;
                             HMI.ChestImpact.Cmd.bJogNeg := FALSE;
-                            trIEmhAxis := 2;
+                            trIEmhAxis := 1;
                             trDiSnap   := diScanCount;
                         ELSIF HMI.ChestImpact.Status.Force.rNetTorquePct > runHoming.rAntiPinchTorqueLimit THEN
                             (* 防夹：净扭矩超阈→撤力进 PINCH_WAIT（基线无效净力为 0 不触发） *)
@@ -875,12 +879,12 @@ CASE iState OF
                         ELSE
                             (* 方向：rActPos<rInit 需增→JogPos；> 需减→JogNeg。
                                接近区内用爬行速，区外用主速。电平每扫持续写。 *)
-                            IF ABS(HMI.ChestImpact.Status.Servo.rActPosition - trRInit[1]) <= trRApproach[1] THEN
-                                HMI.ChestImpact.Motion.rJogVel := trRCrawlV[1];
+                            IF ABS(HMI.ChestImpact.Status.Servo.rActPosition - trRInit[0]) <= trRApproach[0] THEN
+                                HMI.ChestImpact.Motion.rJogVel := trRCrawlV[0];
                             ELSE
-                                HMI.ChestImpact.Motion.rJogVel := trRJogV[1];
+                                HMI.ChestImpact.Motion.rJogVel := trRJogV[0];
                             END_IF;
-                            IF HMI.ChestImpact.Status.Servo.rActPosition < trRInit[1] THEN
+                            IF HMI.ChestImpact.Status.Servo.rActPosition < trRInit[0] THEN
                                 HMI.ChestImpact.Cmd.bJogPos := TRUE;
                                 HMI.ChestImpact.Cmd.bJogNeg := FALSE;
                             ELSE
@@ -889,11 +893,11 @@ CASE iState OF
                             END_IF;
                         END_IF;
 
-                    ELSIF trIEmhAxis = 2 THEN
-                        IF ABS(HMI.SeatTwist.Status.Servo.rActPosition - trRInit[2]) <= trRHyst[2] THEN
+                    ELSIF trIEmhAxis = 1 THEN
+                        IF ABS(HMI.SeatTwist.Status.Servo.rActPosition - trRInit[1]) <= trRHyst[1] THEN
                             HMI.SeatTwist.Cmd.bJogPos := FALSE;
                             HMI.SeatTwist.Cmd.bJogNeg := FALSE;
-                            trIEmhAxis := 3;
+                            trIEmhAxis := 2;
                             trDiSnap   := diScanCount;
                         ELSIF HMI.SeatTwist.Status.Force.rNetTorquePct > runHoming.rAntiPinchTorqueLimit THEN
                             HMI.SeatTwist.Cmd.bJogPos := FALSE;
@@ -907,12 +911,12 @@ CASE iState OF
                             trBFaultLat := TRUE; trILatLevel := 2; trILatCode := ERR_HOME_AXIS;
                             trILatSource := SRC_HOMING; trILatSub := AXIS_ID_SEAT;
                         ELSE
-                            IF ABS(HMI.SeatTwist.Status.Servo.rActPosition - trRInit[2]) <= trRApproach[2] THEN
-                                HMI.SeatTwist.Motion.rJogVel := trRCrawlV[2];
+                            IF ABS(HMI.SeatTwist.Status.Servo.rActPosition - trRInit[1]) <= trRApproach[1] THEN
+                                HMI.SeatTwist.Motion.rJogVel := trRCrawlV[1];
                             ELSE
-                                HMI.SeatTwist.Motion.rJogVel := trRJogV[2];
+                                HMI.SeatTwist.Motion.rJogVel := trRJogV[1];
                             END_IF;
-                            IF HMI.SeatTwist.Status.Servo.rActPosition < trRInit[2] THEN
+                            IF HMI.SeatTwist.Status.Servo.rActPosition < trRInit[1] THEN
                                 HMI.SeatTwist.Cmd.bJogPos := TRUE;
                                 HMI.SeatTwist.Cmd.bJogNeg := FALSE;
                             ELSE
@@ -921,11 +925,11 @@ CASE iState OF
                             END_IF;
                         END_IF;
 
-                    ELSIF trIEmhAxis = 3 THEN
-                        IF ABS(HMI.LegAngle.Status.Servo.rActPosition - trRInit[3]) <= trRHyst[3] THEN
+                    ELSIF trIEmhAxis = 2 THEN
+                        IF ABS(HMI.LegAngle.Status.Servo.rActPosition - trRInit[2]) <= trRHyst[2] THEN
                             HMI.LegAngle.Cmd.bJogPos := FALSE;
                             HMI.LegAngle.Cmd.bJogNeg := FALSE;
-                            trIEmhAxis := 4;
+                            trIEmhAxis := -1;
                             trDiSnap   := diScanCount;
                         ELSIF HMI.LegAngle.Status.Force.rNetTorquePct > runHoming.rAntiPinchTorqueLimit THEN
                             HMI.LegAngle.Cmd.bJogPos := FALSE;
@@ -939,12 +943,12 @@ CASE iState OF
                             trBFaultLat := TRUE; trILatLevel := 2; trILatCode := ERR_HOME_AXIS;
                             trILatSource := SRC_HOMING; trILatSub := AXIS_ID_LEG;
                         ELSE
-                            IF ABS(HMI.LegAngle.Status.Servo.rActPosition - trRInit[3]) <= trRApproach[3] THEN
-                                HMI.LegAngle.Motion.rJogVel := trRCrawlV[3];
+                            IF ABS(HMI.LegAngle.Status.Servo.rActPosition - trRInit[2]) <= trRApproach[2] THEN
+                                HMI.LegAngle.Motion.rJogVel := trRCrawlV[2];
                             ELSE
-                                HMI.LegAngle.Motion.rJogVel := trRJogV[3];
+                                HMI.LegAngle.Motion.rJogVel := trRJogV[2];
                             END_IF;
-                            IF HMI.LegAngle.Status.Servo.rActPosition < trRInit[3] THEN
+                            IF HMI.LegAngle.Status.Servo.rActPosition < trRInit[2] THEN
                                 HMI.LegAngle.Cmd.bJogPos := TRUE;
                                 HMI.LegAngle.Cmd.bJogNeg := FALSE;
                             ELSE
@@ -957,11 +961,11 @@ CASE iState OF
                     (* 单轴紧急回零超时 diEmergencyTimeout（ms）→ 1203 兜底（撤力停留等复位） *)
                     IF (runHoming.diEmergencyTimeout > 0)
                        AND ((diScanCount - trDiSnap) * 10 >= runHoming.diEmergencyTimeout)
-                       AND (trIEmhAxis <= 3) THEN
-                        IF trIEmhAxis = 1 THEN
+                       AND (trIEmhAxis >= 0) THEN
+                        IF trIEmhAxis = 0 THEN
                             HMI.ChestImpact.Cmd.bJogPos := FALSE;
                             HMI.ChestImpact.Cmd.bJogNeg := FALSE;
-                        ELSIF trIEmhAxis = 2 THEN
+                        ELSIF trIEmhAxis = 1 THEN
                             HMI.SeatTwist.Cmd.bJogPos := FALSE;
                             HMI.SeatTwist.Cmd.bJogNeg := FALSE;
                         ELSE
@@ -969,7 +973,15 @@ CASE iState OF
                             HMI.LegAngle.Cmd.bJogNeg := FALSE;
                         END_IF;
                         trBFaultLat := TRUE; trILatLevel := 2; trILatCode := ERR_EMGHOME_RETRY;
-                        trILatSource := SRC_HOMING; trILatSub := trIEmhAxis;
+                        trILatSource := SRC_HOMING;
+                        (* 故障子码=协议轴号：内部下标 0=Chest/1=Seat/2=Leg，须显式映射，勿直接用游标 *)
+                        IF trIEmhAxis = 0 THEN
+                            trILatSub := AXIS_ID_CHEST;
+                        ELSIF trIEmhAxis = 1 THEN
+                            trILatSub := AXIS_ID_SEAT;
+                        ELSE
+                            trILatSub := AXIS_ID_LEG;
+                        END_IF;
                     END_IF;
                 END_IF;
 
@@ -983,18 +995,29 @@ CASE iState OF
                 HMI.LegAngle.Cmd.bJogPos    := FALSE;
                 HMI.LegAngle.Cmd.bJogNeg    := FALSE;
                 IF (diScanCount - trDiPinchSnap) >= 50 THEN
-                    trIRetry[trIEmhAxis] := trIRetry[trIEmhAxis] + 1;
-                    IF trIRetry[trIEmhAxis] > runHoming.iMaxRetry THEN
-                        trBFaultLat := TRUE; trILatLevel := 2; trILatCode := ERR_EMGHOME_RETRY;
-                        trILatSource := SRC_HOMING; trILatSub := trIEmhAxis;
-                        (* 中止：停留 1140 等用户 trigSysReset *)
-                    ELSE
-                        (* 防夹事件 Warning（1202，每次触发上报，送出即释放） *)
-                        trBFaultLat := TRUE; trILatLevel := 1; trILatCode := ERR_EMGHOME_TORQUE;
-                        trILatSource := SRC_HOMING; trILatSub := trIEmhAxis;
-                        trBEmhPinch := FALSE;
-                        trDiSnap    := diScanCount;
-                        trIStepEmh  := 1110;
+                    (* 防夹仅在活动轴触发，trIEmhAxis 必为 0..2；仍加 >=0 防护避免哨兵(-1)误索引 *)
+                    IF trIEmhAxis >= 0 THEN
+                        trIRetry[trIEmhAxis] := trIRetry[trIEmhAxis] + 1;
+                        (* 故障子码=协议轴号：内部下标 0=Chest/1=Seat/2=Leg，须显式映射 *)
+                        IF trIEmhAxis = 0 THEN
+                            trILatSub := AXIS_ID_CHEST;
+                        ELSIF trIEmhAxis = 1 THEN
+                            trILatSub := AXIS_ID_SEAT;
+                        ELSE
+                            trILatSub := AXIS_ID_LEG;
+                        END_IF;
+                        IF trIRetry[trIEmhAxis] > runHoming.iMaxRetry THEN
+                            trBFaultLat := TRUE; trILatLevel := 2; trILatCode := ERR_EMGHOME_RETRY;
+                            trILatSource := SRC_HOMING;
+                            (* 中止：停留 1140 等用户 trigSysReset *)
+                        ELSE
+                            (* 防夹事件 Warning（1202，每次触发上报，送出即释放） *)
+                            trBFaultLat := TRUE; trILatLevel := 1; trILatCode := ERR_EMGHOME_TORQUE;
+                            trILatSource := SRC_HOMING;
+                            trBEmhPinch := FALSE;
+                            trDiSnap    := diScanCount;
+                            trIStepEmh  := 1110;
+                        END_IF;
                     END_IF;
                 END_IF;
 

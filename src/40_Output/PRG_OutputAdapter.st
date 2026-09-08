@@ -9,7 +9,7 @@
     - 内部汇总位 bAllAxesIdle / bAllAxesRef / bAllAxesAtInit（MODE_MANAGER 读）；
     - 轴故障事件 gFault*（每扫至多 1 条序列化提交，ERROR_MANAGER 第 4 环消费）。
   读入：
-    - axisPowerEnable[1..3]（POWER 第 9 环使能电平）、bSafetyStop（SAFETY）；
+    - axisPowerEnable[0..2]（POWER 第 9 环使能电平）、bSafetyStop（SAFETY）；
     - axisPulse[i,AXCMD_*]（脉冲命令）、axisJogPos/Neg[i]（点动电平）；
     - HMI.<Axis>.Motion（手动目标/速度/加减速）、runAxis[i]（限位/容差/初始位/超时）、
       runCond.<Axis>（16 段缓冲段表）、retainZeroComm[i]（建零标志）；
@@ -17,25 +17,58 @@
   故障序列化：gFaultSubmit 同扫后写覆盖先写，故本环每扫至多提交 1 条：
     Critical(2) 优先于 Warning(1)；同级按轴序 Chest→Seat→Leg；
     gFaultSource 用故障轴号（AXIS_ID_CHEST=1 / LEG=2 / SEAT=3）。
-  轴下标双轨：内部数组 1=Chest冲击 / 2=Seat扭角 / 3=Leg转角；
+  轴下标双轨：内部数组 base 0，下标 0=Chest冲击 / 1=Seat扭角 / 2=Leg转角；
     故障轴号 iAxisId：Chest→AXIS_ID_CHEST(1)、Seat→AXIS_ID_SEAT(3)、Leg→AXIS_ID_LEG(2)。
   推杆：第 5 节完整实现（FB 调用 + 状态回填 + Y5/Y6 输出，硬急停物理切断）。
 ==========================================================================*)
 PROGRAM PRG_OutputAdapter
 VAR
-    fbAxisChest : FB_AxisControl;   (* 冲击轴（内部下标 1，Axis_胸背） *)
-    fbAxisSeat  : FB_AxisControl;   (* 扭角轴（内部下标 2，Axis_臀盘） *)
-    fbAxisLeg   : FB_AxisControl;   (* 转角轴（内部下标 3，Axis_臀腿） *)
+    fbAxisChest : FB_AxisControl;   (* 冲击轴（内部下标 0，Axis_胸背） *)
+    fbAxisSeat  : FB_AxisControl;   (* 扭角轴（内部下标 1，Axis_臀盘） *)
+    fbAxisLeg   : FB_AxisControl;   (* 转角轴（内部下标 2，Axis_臀腿） *)
     fbPusher    : FB_PusherControl; (* 尾板电推杆（开关型，Y5/Y6） *)
 END_VAR
 
 (*------------------------------------------------------------
   1) 三轴 FB 调用（参数接线；轴引用/使能/命令/限位/段表/建零/力估算）
 ------------------------------------------------------------*)
-(* 1.1 冲击轴 Chest（内部 1）：扭矩基线学习仅本轴接 trigLearnBias *)
+(* 1.1 冲击轴 Chest（内部下标 0）：扭矩基线学习仅本轴接 trigLearnBias *)
 fbAxisChest(
     Axis            := Axis_胸背,
     iAxisId         := AXIS_ID_CHEST,
+    bEnable         := axisPowerEnable[0],
+    bReset          := axisPulse[0, AXCMD_RESET],
+    bZeroComm       := axisPulse[0, AXCMD_ZERO_COMM],
+    bStop           := axisPulse[0, AXCMD_STOP],
+    bMoveAbs        := axisPulse[0, AXCMD_MOVEABS],
+    bMoveRel        := axisPulse[0, AXCMD_MOVEREL],
+    bJogPos         := axisJogPos[0],
+    bJogNeg         := axisJogNeg[0],
+    bMoveBuffer     := axisPulse[0, AXCMD_MOVEBUFFER],
+    arSegPos        := runCond.ChestImpact.arPosition,
+    arSegVel        := runCond.ChestImpact.arVelocity,
+    iSegCount       := runCond.ChestImpact.iSegmentCount,
+    rTargetPos      := HMI.ChestImpact.Motion.rTargetPos,
+    rTargetVel      := HMI.ChestImpact.Motion.rTargetVel,
+    rJogVel         := HMI.ChestImpact.Motion.rJogVel,
+    rAcc            := HMI.ChestImpact.Motion.rAcc,
+    rDec            := HMI.ChestImpact.Motion.rDec,
+    rInitPos        := runAxis[0].rInitPos,
+    rPosLimit       := runAxis[0].rPosLimit,
+    rNegLimit       := runAxis[0].rNegLimit,
+    rTolerance      := runAxis[0].rTolerance,
+    diTimeout       := runAxis[0].diTimeout,
+    bSafetyStop     := bSafetyStop,
+    bZeroCommRetain := retainZeroComm[0],
+    bLearnBias      := trigLearnBias,
+    rForceScaleN    := FORCE_SCALE_N,
+    rOverForceN     := OVERFORCE_N
+);
+
+(* 1.2 扭角轴 Seat（内部下标 1，故障轴号 AXIS_ID_SEAT=3） *)
+fbAxisSeat(
+    Axis            := Axis_臀盘,
+    iAxisId         := AXIS_ID_SEAT,
     bEnable         := axisPowerEnable[1],
     bReset          := axisPulse[1, AXCMD_RESET],
     bZeroComm       := axisPulse[1, AXCMD_ZERO_COMM],
@@ -45,14 +78,14 @@ fbAxisChest(
     bJogPos         := axisJogPos[1],
     bJogNeg         := axisJogNeg[1],
     bMoveBuffer     := axisPulse[1, AXCMD_MOVEBUFFER],
-    arSegPos        := runCond.ChestImpact.arPosition,
-    arSegVel        := runCond.ChestImpact.arVelocity,
-    iSegCount       := runCond.ChestImpact.iSegmentCount,
-    rTargetPos      := HMI.ChestImpact.Motion.rTargetPos,
-    rTargetVel      := HMI.ChestImpact.Motion.rTargetVel,
-    rJogVel         := HMI.ChestImpact.Motion.rJogVel,
-    rAcc            := HMI.ChestImpact.Motion.rAcc,
-    rDec            := HMI.ChestImpact.Motion.rDec,
+    arSegPos        := runCond.SeatTwist.arPosition,
+    arSegVel        := runCond.SeatTwist.arVelocity,
+    iSegCount       := runCond.SeatTwist.iSegmentCount,
+    rTargetPos      := HMI.SeatTwist.Motion.rTargetPos,
+    rTargetVel      := HMI.SeatTwist.Motion.rTargetVel,
+    rJogVel         := HMI.SeatTwist.Motion.rJogVel,
+    rAcc            := HMI.SeatTwist.Motion.rAcc,
+    rDec            := HMI.SeatTwist.Motion.rDec,
     rInitPos        := runAxis[1].rInitPos,
     rPosLimit       := runAxis[1].rPosLimit,
     rNegLimit       := runAxis[1].rNegLimit,
@@ -60,15 +93,15 @@ fbAxisChest(
     diTimeout       := runAxis[1].diTimeout,
     bSafetyStop     := bSafetyStop,
     bZeroCommRetain := retainZeroComm[1],
-    bLearnBias      := trigLearnBias,
+    bLearnBias      := FALSE,
     rForceScaleN    := FORCE_SCALE_N,
     rOverForceN     := OVERFORCE_N
 );
 
-(* 1.2 扭角轴 Seat（内部 2，故障轴号 AXIS_ID_SEAT=3） *)
-fbAxisSeat(
-    Axis            := Axis_臀盘,
-    iAxisId         := AXIS_ID_SEAT,
+(* 1.3 转角轴 Leg（内部下标 2，故障轴号 AXIS_ID_LEG=2） *)
+fbAxisLeg(
+    Axis            := Axis_臀腿,
+    iAxisId         := AXIS_ID_LEG,
     bEnable         := axisPowerEnable[2],
     bReset          := axisPulse[2, AXCMD_RESET],
     bZeroComm       := axisPulse[2, AXCMD_ZERO_COMM],
@@ -78,39 +111,6 @@ fbAxisSeat(
     bJogPos         := axisJogPos[2],
     bJogNeg         := axisJogNeg[2],
     bMoveBuffer     := axisPulse[2, AXCMD_MOVEBUFFER],
-    arSegPos        := runCond.SeatTwist.arPosition,
-    arSegVel        := runCond.SeatTwist.arVelocity,
-    iSegCount       := runCond.SeatTwist.iSegmentCount,
-    rTargetPos      := HMI.SeatTwist.Motion.rTargetPos,
-    rTargetVel      := HMI.SeatTwist.Motion.rTargetVel,
-    rJogVel         := HMI.SeatTwist.Motion.rJogVel,
-    rAcc            := HMI.SeatTwist.Motion.rAcc,
-    rDec            := HMI.SeatTwist.Motion.rDec,
-    rInitPos        := runAxis[2].rInitPos,
-    rPosLimit       := runAxis[2].rPosLimit,
-    rNegLimit       := runAxis[2].rNegLimit,
-    rTolerance      := runAxis[2].rTolerance,
-    diTimeout       := runAxis[2].diTimeout,
-    bSafetyStop     := bSafetyStop,
-    bZeroCommRetain := retainZeroComm[2],
-    bLearnBias      := FALSE,
-    rForceScaleN    := FORCE_SCALE_N,
-    rOverForceN     := OVERFORCE_N
-);
-
-(* 1.3 转角轴 Leg（内部 3，故障轴号 AXIS_ID_LEG=2） *)
-fbAxisLeg(
-    Axis            := Axis_臀腿,
-    iAxisId         := AXIS_ID_LEG,
-    bEnable         := axisPowerEnable[3],
-    bReset          := axisPulse[3, AXCMD_RESET],
-    bZeroComm       := axisPulse[3, AXCMD_ZERO_COMM],
-    bStop           := axisPulse[3, AXCMD_STOP],
-    bMoveAbs        := axisPulse[3, AXCMD_MOVEABS],
-    bMoveRel        := axisPulse[3, AXCMD_MOVEREL],
-    bJogPos         := axisJogPos[3],
-    bJogNeg         := axisJogNeg[3],
-    bMoveBuffer     := axisPulse[3, AXCMD_MOVEBUFFER],
     arSegPos        := runCond.LegAngle.arPosition,
     arSegVel        := runCond.LegAngle.arVelocity,
     iSegCount       := runCond.LegAngle.iSegmentCount,
@@ -119,13 +119,13 @@ fbAxisLeg(
     rJogVel         := HMI.LegAngle.Motion.rJogVel,
     rAcc            := HMI.LegAngle.Motion.rAcc,
     rDec            := HMI.LegAngle.Motion.rDec,
-    rInitPos        := runAxis[3].rInitPos,
-    rPosLimit       := runAxis[3].rPosLimit,
-    rNegLimit       := runAxis[3].rNegLimit,
-    rTolerance      := runAxis[3].rTolerance,
-    diTimeout       := runAxis[3].diTimeout,
+    rInitPos        := runAxis[2].rInitPos,
+    rPosLimit       := runAxis[2].rPosLimit,
+    rNegLimit       := runAxis[2].rNegLimit,
+    rTolerance      := runAxis[2].rTolerance,
+    diTimeout       := runAxis[2].diTimeout,
     bSafetyStop     := bSafetyStop,
-    bZeroCommRetain := retainZeroComm[3],
+    bZeroCommRetain := retainZeroComm[2],
     bLearnBias      := FALSE,
     rForceScaleN    := FORCE_SCALE_N,
     rOverForceN     := OVERFORCE_N

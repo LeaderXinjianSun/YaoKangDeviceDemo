@@ -18,9 +18,9 @@ FC_DefaultConditionParams.SeatTwist.iSignalMode      := -1;
 FC_DefaultConditionParams.SeatTwist.iSegmentCount    := 1;
 FC_DefaultConditionParams.SeatTwist.bEnabled         := TRUE;
 FC_DefaultConditionParams.SeatTwist.bOneWay          := FALSE;
-FC_DefaultConditionParams.SeatTwist.arPosition[1]    := 10.0;
-FC_DefaultConditionParams.SeatTwist.arVelocity[1]    := 2.0;
-FC_DefaultConditionParams.SeatTwist.abCycleMode[1]   := FALSE;
+FC_DefaultConditionParams.SeatTwist.arPosition[0]    := 10.0;
+FC_DefaultConditionParams.SeatTwist.arVelocity[0]    := 2.0;
+FC_DefaultConditionParams.SeatTwist.abCycleMode[0]   := FALSE;
 
 (*--- 摆腿 LegAngle：默认单段 +15° ---*)
 FC_DefaultConditionParams.LegAngle.rAcc             := 20.0;
@@ -33,9 +33,9 @@ FC_DefaultConditionParams.LegAngle.iSignalMode      := -1;
 FC_DefaultConditionParams.LegAngle.iSegmentCount    := 1;
 FC_DefaultConditionParams.LegAngle.bEnabled         := TRUE;
 FC_DefaultConditionParams.LegAngle.bOneWay          := FALSE;
-FC_DefaultConditionParams.LegAngle.arPosition[1]    := 15.0;
-FC_DefaultConditionParams.LegAngle.arVelocity[1]    := 3.0;
-FC_DefaultConditionParams.LegAngle.abCycleMode[1]   := FALSE;
+FC_DefaultConditionParams.LegAngle.arPosition[0]    := 15.0;
+FC_DefaultConditionParams.LegAngle.arVelocity[0]    := 3.0;
+FC_DefaultConditionParams.LegAngle.abCycleMode[0]   := FALSE;
 
 (*--- 冲击 ChestImpact：默认单段 +5°、较快 5 °/s ---*)
 FC_DefaultConditionParams.ChestImpact.rAcc             := 30.0;
@@ -48,9 +48,9 @@ FC_DefaultConditionParams.ChestImpact.iSignalMode      := -1;
 FC_DefaultConditionParams.ChestImpact.iSegmentCount    := 1;
 FC_DefaultConditionParams.ChestImpact.bEnabled         := TRUE;
 FC_DefaultConditionParams.ChestImpact.bOneWay          := FALSE;
-FC_DefaultConditionParams.ChestImpact.arPosition[1]    := 5.0;
-FC_DefaultConditionParams.ChestImpact.arVelocity[1]    := 5.0;
-FC_DefaultConditionParams.ChestImpact.abCycleMode[1]   := FALSE;
+FC_DefaultConditionParams.ChestImpact.arPosition[0]    := 5.0;
+FC_DefaultConditionParams.ChestImpact.arVelocity[0]    := 5.0;
+FC_DefaultConditionParams.ChestImpact.abCycleMode[0]   := FALSE;
 
 (*--- 全局 ---*)
 FC_DefaultConditionParams.rPusherPos       := 0.0;      (* 成角目标 °（尾板） *)

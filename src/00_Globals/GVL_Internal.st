@@ -81,13 +81,15 @@ VAR_GLOBAL
     bNoLoadConfirm      : BOOL;        (* 无负载确认（电平，建零门控） *)
     bRevalidateParams   : BOOL;        (* 参数重校验（电平，P5 消费） *)
 
-    (*--- 三轴命令：[1..3]=Chest冲击/Seat扭角/Leg转角（与 HMI 块轴 ID 对齐，
-          见 GVL_CONST AXIS_ID_*）；第二维见 AXCMD_* 索引。INPUT_ADAPTER 单写。 ---*)
-    axisPulse       : BOOL[1..3, 1..8];   (* 脉冲命令位（AXCMD_RESET..AXCMD_REQ_DISABLE） *)
-    axisEnableReq   : BOOL[1..3];         (* bEnable 电平：请求伺服上电（POWER 消费） *)
-    axisJogPos      : BOOL[1..3];         (* bJogPos 正向点动（电平，按住有效） *)
-    axisJogNeg      : BOOL[1..3];         (* bJogNeg 负向点动（电平，按住有效） *)
-    axisPowerEnable : BOOL[1..3];         (* 伺服使能电平：POWER 单写（分时上电/急停切断），OUTPUT_ADAPTER 只读 *)
+    (*--- 三轴命令：H5U 数组 base 0，下标 0=Chest冲击 / 1=Seat扭角 / 2=Leg转角
+          （轴协议码 AXIS_ID_CHEST=1/SEAT=3/LEG=2 见 GVL_CONST，故障上报须用
+          AXIS_ID_*，勿用本数组下标）；第二维见 AXCMD_* 索引（0..7）。
+          INPUT_ADAPTER 单写。 ---*)
+    axisPulse       : BOOL[3, 8];        (* 脉冲命令位（AXCMD_RESET..AXCMD_REQ_DISABLE，下标 0..7） *)
+    axisEnableReq   : BOOL[3];           (* bEnable 电平：请求伺服上电（POWER 消费），下标 0..2 *)
+    axisJogPos      : BOOL[3];           (* bJogPos 正向点动（电平，按住有效），下标 0..2 *)
+    axisJogNeg      : BOOL[3];           (* bJogNeg 负向点动（电平，按住有效），下标 0..2 *)
+    axisPowerEnable : BOOL[3];           (* 伺服使能电平：POWER 单写（分时上电/急停切断），OUTPUT_ADAPTER 只读，下标 0..2 *)
 
     (*--- 电推杆（尾板 TailTilt）命令：INPUT_ADAPTER 单写 ---*)
     trigPushStop        : BOOL;        (* 推杆停止（脉冲） *)
@@ -107,7 +109,7 @@ VAR_GLOBAL
        OUTPUT_ADAPTER 置 bPushCalibDoneLatch，PARAM_SERVICE 次扫环8 消费写
        retainTailZeroComm:=TRUE 并清。trigClearZeroRetain 环2 脉冲由 PARAM_SERVICE
        环8 消费清全部建零 Retain。 *)
-    bZeroCommSetReq     : BOOL[1..3];     (* 三轴建零置位请求（锁存） *)
+    bZeroCommSetReq     : BOOL[3];         (* 三轴建零置位请求（锁存），下标 0..2 *)
     bPushCalibDoneLatch : BOOL;           (* 推杆标定完成锁存（跨环） *)
 
     (*--- 故障提交区（任务模块写 gFaultSubmit，ERROR_MANAGER 唯一消费） ---*)
@@ -138,8 +140,8 @@ VAR_GLOBAL
       ========================================================================*)
 
     (*--- PRG_CmdPreclear（环1 命令清扫） ---*)
-    cpIAxis  : INT;                    (* 轴清扫循环下标 1..3 *)
-    cpICmd   : INT;                    (* 轴脉冲位循环下标 1..AXCMD_MAX *)
+    cpIAxis  : INT;                    (* 轴清扫循环下标 0..2（base 0） *)
+    cpICmd   : INT;                    (* 轴脉冲位循环下标 0..AXCMD_MAX-1（base 0） *)
 
     (*--- PRG_InputAdapter（环2 输入适配） ---*)
     iaTEstop1Db    : BOOL;             (* 急停通道1 去抖输出（X2 常闭，内联 TONR Q=>） *)
@@ -192,21 +194,21 @@ VAR_GLOBAL
     trIStepSt       : INT;             (* 自检步（ST_GATE..ST_STEP_FAIL） *)
     trIStepCal      : INT;             (* 建零步（CAL_*） *)
     trDiSnap        : DINT;            (* 任务级起始扫描快照（超时判定） *)
-    trIAxis         : INT;             (* 当前活动轴下标 1..3 *)
-    trBAxisDone     : BOOL[1..3];      (* 各轴任务完成（到位+静止+在初始位） *)
-    trRInit         : REAL[1..3];      (* 各轴初始位镜像（runAxis[i].rInitPos） *)
-    trRJogV         : REAL[1..3];      (* 各轴 Jog 主速镜像（runHoming） *)
-    trRCrawlV       : REAL[1..3];      (* 各轴爬行速镜像 *)
-    trRApproach     : REAL[1..3];      (* 各轴接近区镜像 *)
-    trRHyst         : REAL[1..3];      (* 各轴到位迟滞镜像 *)
-    trIRetry        : INT[1..3];       (* 各轴防夹重试计数 *)
-    trIEmhAxis      : INT;             (* 紧急回零活动轴下标 1..3 *)
+    trIAxis         : INT;             (* 当前活动轴下标 0..2（base 0；-1=无活动轴哨兵） *)
+    trBAxisDone     : BOOL[3];         (* 各轴任务完成（到位+静止+在初始位），下标 0..2 *)
+    trRInit         : REAL[3];         (* 各轴初始位镜像（runAxis[i].rInitPos），下标 0..2 *)
+    trRJogV         : REAL[3];         (* 各轴 Jog 主速镜像（runHoming），下标 0..2 *)
+    trRCrawlV       : REAL[3];         (* 各轴爬行速镜像，下标 0..2 *)
+    trRApproach     : REAL[3];         (* 各轴接近区镜像，下标 0..2 *)
+    trRHyst         : REAL[3];         (* 各轴到位迟滞镜像，下标 0..2 *)
+    trIRetry        : INT[3];          (* 各轴防夹重试计数，下标 0..2（索引前须 trIEmhAxis>=0） *)
+    trIEmhAxis      : INT;             (* 紧急回零活动轴下标 0..2（base 0；-1=无活动轴哨兵） *)
     trDiPinchSnap   : DINT;            (* 防夹撤力等待快照 *)
     trBDirtyAxis    : BOOL;            (* 脏1：三轴活动故障 *)
     trBDirtyForce   : BOOL;            (* 脏2：超力锁存/保护停机 *)
     trBDirtyPusher  : BOOL;            (* 脏3：推杆传感器异常 *)
     trBDirtyParam   : BOOL;            (* 脏4：参数需重校验 *)
-    trIStAxis       : INT;             (* 自检摆动当前轴 1..3 *)
+    trIStAxis       : INT;             (* 自检摆动当前轴 0..2（base 0） *)
     trIStPhase      : INT;             (* 单轴摆动相位 0=+2° 1=-2° 2=归位 *)
     trDiStSnap      : DINT;            (* 自检单段快照 *)
     trDiStGlobalSnap: DINT;            (* 自检全局快照 *)
@@ -245,12 +247,12 @@ VAR_GLOBAL
     pwIPwrStep  : INT := 0;            (* 0=全断 1=Chest使能 2=Chest等间隔 3=Seat使能 4=Seat等间隔 5=Leg使能 6=全上电完成 *)
     pwBPwrReq   : BOOL;                (* 上电请求锁存 *)
     pwDiStepSnap: DINT;                (* 当前步进入扫描计数 *)
-    pwBDisReq   : BOOL[1..3];          (* 单轴断使能请求锁存（AXCMD_REQ_DISABLE 脉冲） *)
+    pwBDisReq   : BOOL[3];          (* 单轴断使能请求锁存（AXCMD_REQ_DISABLE 脉冲），下标 0..2 *)
 
     (*--- PRG_Main（主循环/看门狗） ---*)
     mnTScanWatchdog : BOOL;            (* 扫描看门狗超时标志（预留：待绑定 H5U 任务看门狗系统变量；置位时 SAFETY_MANAGER 上报 1007；无应用内 TONR 驱动，详见 PRG_Main 注释） *)
 
     (*--- FC_ValidateParams（参数校验函数，函数内私有工作变量） ---*)
-    vpI   : INT;                       (* 段索引 1..16（FOR 循环） *)
+    vpI   : INT;                       (* 段索引 0..15（FOR 循环，base 0；段协议号 = vpI+1） *)
     vpCfg : Stru_AxisLimitConfig;      (* 轴 Config 校验用局部视图 *)
 END_VAR

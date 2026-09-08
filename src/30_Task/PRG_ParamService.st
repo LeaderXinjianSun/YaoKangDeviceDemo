@@ -19,7 +19,8 @@
     bApply        : 编辑缓冲 → FC_ValidateParams → 通过覆盖运行区，失败回三元组
     bSave         : 运行区 → Retain（置 retainValid）
     bResetDefault : 工厂默认 → 运行区+缓冲+Retain（运行锁定态拒绝 Apply/Default）
-  轴数组下标（GVL_Params.runAxis[1..3]）：1=Chest 冲击 / 2=Seat 扭角 / 3=Leg 转角。
+  轴数组下标（GVL_Params.runAxis[3]，base 0）：0=Chest 冲击 / 1=Seat 扭角 / 2=Leg 转角。
+  注：iBlock=1..6 为 FC_ValidateParams 功能块协议块号（非数组下标，不改）。
   P11：设备身份 D1000/D1010 的 Load/Apply 见段 8（本程序实现）。
 ==========================================================================*)
 PROGRAM PRG_ParamService
@@ -52,9 +53,9 @@ IF NOT bParamBootDone THEN
     ELSE
         (*--- Retain 无效（首板/失保持）：工厂默认 → 运行区 ---*)
         runCond   := FC_DefaultConditionParams();
-        runAxis[1] := FC_DefaultAxisConfig();    (* Chest 冲击 *)
-        runAxis[2] := FC_DefaultAxisConfig();    (* Seat 扭角 *)
-        runAxis[3] := FC_DefaultAxisConfig();    (* Leg 转角 *)
+        runAxis[0] := FC_DefaultAxisConfig();    (* 下标0 Chest 冲击 *)
+        runAxis[1] := FC_DefaultAxisConfig();    (* 下标1 Seat 扭角 *)
+        runAxis[2] := FC_DefaultAxisConfig();    (* 下标2 Leg 转角 *)
         runHoming := FC_DefaultHomingParams();
         runPusher := FC_DefaultPusherConfig();
         (*--- 默认值同步落 Retain，置有效标志 ---*)
@@ -67,9 +68,9 @@ IF NOT bParamBootDone THEN
 
     (*--- 运行区 → HMI 编辑缓冲（上电自动 Load） ---*)
     HMI.Condition.Param      := runCond;
-    HMI.ChestImpact.Config   := runAxis[1];
-    HMI.SeatTwist.Config     := runAxis[2];
-    HMI.LegAngle.Config      := runAxis[3];
+    HMI.ChestImpact.Config   := runAxis[0];
+    HMI.SeatTwist.Config     := runAxis[1];
+    HMI.LegAngle.Config      := runAxis[2];
     HMI.HomingParams.Params  := runHoming;
     HMI.TailTilt.Config      := runPusher;
 
@@ -85,13 +86,13 @@ IF NOT bParamBootDone THEN
     HMI.TailTilt.ConfigCmd.bSave := FALSE;  HMI.TailTilt.ConfigCmd.bResetDefault := FALSE;
     HMI.TailTilt.ConfigCmd.bSuccess := FALSE; HMI.TailTilt.ConfigCmd.bError := FALSE;
     HMI.TailTilt.ConfigCmd.iErrorCode := 0;
-    FOR psI := 1 TO 3 DO
-        IF psI = 1 THEN
+    FOR psI := 0 TO 2 DO
+        IF psI = 0 THEN
             HMI.ChestImpact.ConfigCmd.bLoad := FALSE; HMI.ChestImpact.ConfigCmd.bApply := FALSE;
             HMI.ChestImpact.ConfigCmd.bSave := FALSE; HMI.ChestImpact.ConfigCmd.bResetDefault := FALSE;
             HMI.ChestImpact.ConfigCmd.bSuccess := FALSE; HMI.ChestImpact.ConfigCmd.bError := FALSE;
             HMI.ChestImpact.ConfigCmd.iErrorCode := 0;
-        ELSIF psI = 2 THEN
+        ELSIF psI = 1 THEN
             HMI.SeatTwist.ConfigCmd.bLoad := FALSE; HMI.SeatTwist.ConfigCmd.bApply := FALSE;
             HMI.SeatTwist.ConfigCmd.bSave := FALSE; HMI.SeatTwist.ConfigCmd.bResetDefault := FALSE;
             HMI.SeatTwist.ConfigCmd.bSuccess := FALSE; HMI.SeatTwist.ConfigCmd.bError := FALSE;
@@ -242,15 +243,15 @@ HMI.TailTilt.ConfigCmd.bResetDefault := FALSE;
 
 
 (*==========================================================================
-  4. 三轴 Config 块（内部轴序 1=Chest 2=Seat 3=Leg；校验块号 3/5/4）
+  4. 三轴 Config 块（内部下标 base 0：0=Chest 1=Seat 2=Leg；校验块号 3/5/4）
   ==========================================================================*)
-(*--- 轴 1 ChestImpact（校验 iBlock=3） ---*)
+(*--- 下标0 ChestImpact（校验 iBlock=3，协议块号非数组下标） ---*)
 rC1Load(CLK  := HMI.ChestImpact.ConfigCmd.bLoad);
 rC1Apply(CLK := HMI.ChestImpact.ConfigCmd.bApply);
 rC1Save(CLK  := HMI.ChestImpact.ConfigCmd.bSave);
 rC1Def(CLK   := HMI.ChestImpact.ConfigCmd.bResetDefault);
 IF rC1Load.Q THEN
-    HMI.ChestImpact.Config := runAxis[1];
+    HMI.ChestImpact.Config := runAxis[0];
     HMI.ChestImpact.ConfigCmd.bSuccess := TRUE;
     HMI.ChestImpact.ConfigCmd.bError   := FALSE;
     HMI.ChestImpact.ConfigCmd.iErrorCode := 0;
@@ -262,7 +263,7 @@ ELSIF rC1Apply.Q THEN
     ELSE
         psBVC := FC_ValidateParams(iBlock := 3, iErrCode => psIVCode, iErrAxis => psIVAxis, iErrField => psIVField);
         IF psBVC THEN
-            runAxis[1] := HMI.ChestImpact.Config;
+            runAxis[0] := HMI.ChestImpact.Config;
             bRunParamValid := TRUE;
             HMI.ChestImpact.ConfigCmd.bSuccess := TRUE;
             HMI.ChestImpact.ConfigCmd.bError   := FALSE;
@@ -277,7 +278,7 @@ ELSIF rC1Apply.Q THEN
         END_IF;
     END_IF;
 ELSIF rC1Save.Q THEN
-    retainAxis[1] := runAxis[1];
+    retainAxis[0] := runAxis[0];
     retainValid   := TRUE;
     HMI.ChestImpact.ConfigCmd.bSuccess := TRUE;
     HMI.ChestImpact.ConfigCmd.bError   := FALSE;
@@ -288,9 +289,9 @@ ELSIF rC1Def.Q THEN
         HMI.ChestImpact.ConfigCmd.bError   := TRUE;
         HMI.ChestImpact.ConfigCmd.iErrorCode := ERR_PARAM_LOCKED;
     ELSE
-        runAxis[1] := FC_DefaultAxisConfig();
-        HMI.ChestImpact.Config := runAxis[1];
-        retainAxis[1] := runAxis[1];
+        runAxis[0] := FC_DefaultAxisConfig();
+        HMI.ChestImpact.Config := runAxis[0];
+        retainAxis[0] := runAxis[0];
         retainValid   := TRUE;
         bRunParamValid := TRUE;
         HMI.ChestImpact.ConfigCmd.bSuccess := TRUE;
@@ -303,13 +304,13 @@ HMI.ChestImpact.ConfigCmd.bApply        := FALSE;
 HMI.ChestImpact.ConfigCmd.bSave         := FALSE;
 HMI.ChestImpact.ConfigCmd.bResetDefault := FALSE;
 
-(*--- 轴 2 SeatTwist（校验 iBlock=5） ---*)
+(*--- 下标1 SeatTwist（校验 iBlock=5，协议块号非数组下标） ---*)
 rC2Load(CLK  := HMI.SeatTwist.ConfigCmd.bLoad);
 rC2Apply(CLK := HMI.SeatTwist.ConfigCmd.bApply);
 rC2Save(CLK  := HMI.SeatTwist.ConfigCmd.bSave);
 rC2Def(CLK   := HMI.SeatTwist.ConfigCmd.bResetDefault);
 IF rC2Load.Q THEN
-    HMI.SeatTwist.Config := runAxis[2];
+    HMI.SeatTwist.Config := runAxis[1];
     HMI.SeatTwist.ConfigCmd.bSuccess := TRUE;
     HMI.SeatTwist.ConfigCmd.bError   := FALSE;
     HMI.SeatTwist.ConfigCmd.iErrorCode := 0;
@@ -321,7 +322,7 @@ ELSIF rC2Apply.Q THEN
     ELSE
         psBVC := FC_ValidateParams(iBlock := 5, iErrCode => psIVCode, iErrAxis => psIVAxis, iErrField => psIVField);
         IF psBVC THEN
-            runAxis[2] := HMI.SeatTwist.Config;
+            runAxis[1] := HMI.SeatTwist.Config;
             bRunParamValid := TRUE;
             HMI.SeatTwist.ConfigCmd.bSuccess := TRUE;
             HMI.SeatTwist.ConfigCmd.bError   := FALSE;
@@ -336,7 +337,7 @@ ELSIF rC2Apply.Q THEN
         END_IF;
     END_IF;
 ELSIF rC2Save.Q THEN
-    retainAxis[2] := runAxis[2];
+    retainAxis[1] := runAxis[1];
     retainValid   := TRUE;
     HMI.SeatTwist.ConfigCmd.bSuccess := TRUE;
     HMI.SeatTwist.ConfigCmd.bError   := FALSE;
@@ -347,9 +348,9 @@ ELSIF rC2Def.Q THEN
         HMI.SeatTwist.ConfigCmd.bError   := TRUE;
         HMI.SeatTwist.ConfigCmd.iErrorCode := ERR_PARAM_LOCKED;
     ELSE
-        runAxis[2] := FC_DefaultAxisConfig();
-        HMI.SeatTwist.Config := runAxis[2];
-        retainAxis[2] := runAxis[2];
+        runAxis[1] := FC_DefaultAxisConfig();
+        HMI.SeatTwist.Config := runAxis[1];
+        retainAxis[1] := runAxis[1];
         retainValid   := TRUE;
         bRunParamValid := TRUE;
         HMI.SeatTwist.ConfigCmd.bSuccess := TRUE;
@@ -362,13 +363,13 @@ HMI.SeatTwist.ConfigCmd.bApply        := FALSE;
 HMI.SeatTwist.ConfigCmd.bSave         := FALSE;
 HMI.SeatTwist.ConfigCmd.bResetDefault := FALSE;
 
-(*--- 轴 3 LegAngle（校验 iBlock=4） ---*)
+(*--- 下标2 LegAngle（校验 iBlock=4，协议块号非数组下标） ---*)
 rC3Load(CLK  := HMI.LegAngle.ConfigCmd.bLoad);
 rC3Apply(CLK := HMI.LegAngle.ConfigCmd.bApply);
 rC3Save(CLK  := HMI.LegAngle.ConfigCmd.bSave);
 rC3Def(CLK   := HMI.LegAngle.ConfigCmd.bResetDefault);
 IF rC3Load.Q THEN
-    HMI.LegAngle.Config := runAxis[3];
+    HMI.LegAngle.Config := runAxis[2];
     HMI.LegAngle.ConfigCmd.bSuccess := TRUE;
     HMI.LegAngle.ConfigCmd.bError   := FALSE;
     HMI.LegAngle.ConfigCmd.iErrorCode := 0;
@@ -380,7 +381,7 @@ ELSIF rC3Apply.Q THEN
     ELSE
         psBVC := FC_ValidateParams(iBlock := 4, iErrCode => psIVCode, iErrAxis => psIVAxis, iErrField => psIVField);
         IF psBVC THEN
-            runAxis[3] := HMI.LegAngle.Config;
+            runAxis[2] := HMI.LegAngle.Config;
             bRunParamValid := TRUE;
             HMI.LegAngle.ConfigCmd.bSuccess := TRUE;
             HMI.LegAngle.ConfigCmd.bError   := FALSE;
@@ -395,7 +396,7 @@ ELSIF rC3Apply.Q THEN
         END_IF;
     END_IF;
 ELSIF rC3Save.Q THEN
-    retainAxis[3] := runAxis[3];
+    retainAxis[2] := runAxis[2];
     retainValid   := TRUE;
     HMI.LegAngle.ConfigCmd.bSuccess := TRUE;
     HMI.LegAngle.ConfigCmd.bError   := FALSE;
@@ -406,9 +407,9 @@ ELSIF rC3Def.Q THEN
         HMI.LegAngle.ConfigCmd.bError   := TRUE;
         HMI.LegAngle.ConfigCmd.iErrorCode := ERR_PARAM_LOCKED;
     ELSE
-        runAxis[3] := FC_DefaultAxisConfig();
-        HMI.LegAngle.Config := runAxis[3];
-        retainAxis[3] := runAxis[3];
+        runAxis[2] := FC_DefaultAxisConfig();
+        HMI.LegAngle.Config := runAxis[2];
+        retainAxis[2] := runAxis[2];
         retainValid   := TRUE;
         bRunParamValid := TRUE;
         HMI.LegAngle.ConfigCmd.bSuccess := TRUE;
@@ -512,7 +513,7 @@ END_IF;
 
 (*==========================================================================
   7. 建零 Retain 握手（单写源：retainZeroComm / retainTailZeroComm 仅本环可写）
-     - bZeroCommSetReq[1..3]：TASK_RUNNER 环7 见 Servo.bZeroCommissioned 置位 →
+     - bZeroCommSetReq[0..2]（base 0：0=Chest/1=Seat/2=Leg）：TASK_RUNNER 环7 见 Servo.bZeroCommissioned 置位 →
        本环消费写 retainZeroComm[i] 并清请求；
      - bPushCalibDoneLatch：OUTPUT_ADAPTER 环10 见 fbPusher.bCalibDone 脉冲置位 →
        本环消费写 retainTailZeroComm 并清锁存；
@@ -520,6 +521,10 @@ END_IF;
        Retain 与跨环请求/锁存（清后建零门控 6 之"参考无效"条件成立）。
      Retain 只置不清（除清除命令）：重复标定不重复写无副作用。
   ==========================================================================*)
+IF bZeroCommSetReq[0] THEN
+    retainZeroComm[0] := TRUE;
+    bZeroCommSetReq[0] := FALSE;
+END_IF;
 IF bZeroCommSetReq[1] THEN
     retainZeroComm[1] := TRUE;
     bZeroCommSetReq[1] := FALSE;
@@ -528,22 +533,18 @@ IF bZeroCommSetReq[2] THEN
     retainZeroComm[2] := TRUE;
     bZeroCommSetReq[2] := FALSE;
 END_IF;
-IF bZeroCommSetReq[3] THEN
-    retainZeroComm[3] := TRUE;
-    bZeroCommSetReq[3] := FALSE;
-END_IF;
 IF bPushCalibDoneLatch THEN
     retainTailZeroComm := TRUE;
     bPushCalibDoneLatch := FALSE;
 END_IF;
 IF trigClearZeroRetain THEN
+    retainZeroComm[0] := FALSE;
     retainZeroComm[1] := FALSE;
     retainZeroComm[2] := FALSE;
-    retainZeroComm[3] := FALSE;
     retainTailZeroComm := FALSE;
+    bZeroCommSetReq[0] := FALSE;
     bZeroCommSetReq[1] := FALSE;
     bZeroCommSetReq[2] := FALSE;
-    bZeroCommSetReq[3] := FALSE;
     bPushCalibDoneLatch := FALSE;
 END_IF;
 

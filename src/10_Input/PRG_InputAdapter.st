@@ -16,8 +16,9 @@
                （HMI 见到位回落即知 PLC 已受理）。
     电平命令 = 按住有效，直接镜像到内部电平位，HMI 松开后随镜像自然回落；
                任务离态时的残留由 CMD_PRECLEAR / 状态机门控兜底。
-  轴数组下标：1=ChestImpact 冲击 / 2=SeatTwist 扭角 / 3=LegAngle 转角
-             （按 HMI 主结构体块顺序；注意与 GVL_CONST AXIS_ID_* 编号不同）。
+  轴数组下标（H5U base 0）：0=ChestImpact 冲击 / 1=SeatTwist 扭角 / 2=LegAngle 转角
+             （按 HMI 主结构体块顺序；注意与 GVL_CONST AXIS_ID_* 协议码编号不同，
+             故障上报须用 AXIS_ID_*，勿用本数组下标）。
 ==========================================================================*)
 PROGRAM PRG_InputAdapter
 VAR
@@ -240,17 +241,17 @@ rA1Rel(CLK   := HMI.ChestImpact.Cmd.bMoveRel);
 rA1Auto(CLK  := HMI.ChestImpact.Cmd.bAutoMove);
 rA1Buf(CLK   := HMI.ChestImpact.Cmd.bMoveBuffer);
 rA1Dis(CLK   := HMI.ChestImpact.Cmd.bRequestDisable);
-axisPulse[1, AXCMD_RESET]       := rA1Reset.Q;
-axisPulse[1, AXCMD_ZERO_COMM]   := rA1Zero.Q;
-axisPulse[1, AXCMD_STOP]        := rA1Stop.Q;
-axisPulse[1, AXCMD_MOVEABS]     := rA1Abs.Q;
-axisPulse[1, AXCMD_MOVEREL]     := rA1Rel.Q;
-axisPulse[1, AXCMD_AUTOMOVE]    := rA1Auto.Q;
-axisPulse[1, AXCMD_MOVEBUFFER]  := rA1Buf.Q;
-axisPulse[1, AXCMD_REQ_DISABLE] := rA1Dis.Q;
-axisEnableReq[1] := HMI.ChestImpact.Cmd.bEnable;
-axisJogPos[1]    := HMI.ChestImpact.Cmd.bJogPos;
-axisJogNeg[1]    := HMI.ChestImpact.Cmd.bJogNeg;
+axisPulse[0, AXCMD_RESET]       := rA1Reset.Q;
+axisPulse[0, AXCMD_ZERO_COMM]   := rA1Zero.Q;
+axisPulse[0, AXCMD_STOP]        := rA1Stop.Q;
+axisPulse[0, AXCMD_MOVEABS]     := rA1Abs.Q;
+axisPulse[0, AXCMD_MOVEREL]     := rA1Rel.Q;
+axisPulse[0, AXCMD_AUTOMOVE]    := rA1Auto.Q;
+axisPulse[0, AXCMD_MOVEBUFFER]  := rA1Buf.Q;
+axisPulse[0, AXCMD_REQ_DISABLE] := rA1Dis.Q;
+axisEnableReq[0] := HMI.ChestImpact.Cmd.bEnable;
+axisJogPos[0]    := HMI.ChestImpact.Cmd.bJogPos;
+axisJogNeg[0]    := HMI.ChestImpact.Cmd.bJogNeg;
 
 (*--- 轴 2 SeatTwist ---*)
 rA2Reset(CLK := HMI.SeatTwist.Cmd.bReset);
@@ -261,17 +262,17 @@ rA2Rel(CLK   := HMI.SeatTwist.Cmd.bMoveRel);
 rA2Auto(CLK  := HMI.SeatTwist.Cmd.bAutoMove);
 rA2Buf(CLK   := HMI.SeatTwist.Cmd.bMoveBuffer);
 rA2Dis(CLK   := HMI.SeatTwist.Cmd.bRequestDisable);
-axisPulse[2, AXCMD_RESET]       := rA2Reset.Q;
-axisPulse[2, AXCMD_ZERO_COMM]   := rA2Zero.Q;
-axisPulse[2, AXCMD_STOP]        := rA2Stop.Q;
-axisPulse[2, AXCMD_MOVEABS]     := rA2Abs.Q;
-axisPulse[2, AXCMD_MOVEREL]     := rA2Rel.Q;
-axisPulse[2, AXCMD_AUTOMOVE]    := rA2Auto.Q;
-axisPulse[2, AXCMD_MOVEBUFFER]  := rA2Buf.Q;
-axisPulse[2, AXCMD_REQ_DISABLE] := rA2Dis.Q;
-axisEnableReq[2] := HMI.SeatTwist.Cmd.bEnable;
-axisJogPos[2]    := HMI.SeatTwist.Cmd.bJogPos;
-axisJogNeg[2]    := HMI.SeatTwist.Cmd.bJogNeg;
+axisPulse[1, AXCMD_RESET]       := rA2Reset.Q;
+axisPulse[1, AXCMD_ZERO_COMM]   := rA2Zero.Q;
+axisPulse[1, AXCMD_STOP]        := rA2Stop.Q;
+axisPulse[1, AXCMD_MOVEABS]     := rA2Abs.Q;
+axisPulse[1, AXCMD_MOVEREL]     := rA2Rel.Q;
+axisPulse[1, AXCMD_AUTOMOVE]    := rA2Auto.Q;
+axisPulse[1, AXCMD_MOVEBUFFER]  := rA2Buf.Q;
+axisPulse[1, AXCMD_REQ_DISABLE] := rA2Dis.Q;
+axisEnableReq[1] := HMI.SeatTwist.Cmd.bEnable;
+axisJogPos[1]    := HMI.SeatTwist.Cmd.bJogPos;
+axisJogNeg[1]    := HMI.SeatTwist.Cmd.bJogNeg;
 
 (*--- 轴 3 LegAngle ---*)
 rA3Reset(CLK := HMI.LegAngle.Cmd.bReset);
@@ -282,17 +283,17 @@ rA3Rel(CLK   := HMI.LegAngle.Cmd.bMoveRel);
 rA3Auto(CLK  := HMI.LegAngle.Cmd.bAutoMove);
 rA3Buf(CLK   := HMI.LegAngle.Cmd.bMoveBuffer);
 rA3Dis(CLK   := HMI.LegAngle.Cmd.bRequestDisable);
-axisPulse[3, AXCMD_RESET]       := rA3Reset.Q;
-axisPulse[3, AXCMD_ZERO_COMM]   := rA3Zero.Q;
-axisPulse[3, AXCMD_STOP]        := rA3Stop.Q;
-axisPulse[3, AXCMD_MOVEABS]     := rA3Abs.Q;
-axisPulse[3, AXCMD_MOVEREL]     := rA3Rel.Q;
-axisPulse[3, AXCMD_AUTOMOVE]    := rA3Auto.Q;
-axisPulse[3, AXCMD_MOVEBUFFER]  := rA3Buf.Q;
-axisPulse[3, AXCMD_REQ_DISABLE] := rA3Dis.Q;
-axisEnableReq[3] := HMI.LegAngle.Cmd.bEnable;
-axisJogPos[3]    := HMI.LegAngle.Cmd.bJogPos;
-axisJogNeg[3]    := HMI.LegAngle.Cmd.bJogNeg;
+axisPulse[2, AXCMD_RESET]       := rA3Reset.Q;
+axisPulse[2, AXCMD_ZERO_COMM]   := rA3Zero.Q;
+axisPulse[2, AXCMD_STOP]        := rA3Stop.Q;
+axisPulse[2, AXCMD_MOVEABS]     := rA3Abs.Q;
+axisPulse[2, AXCMD_MOVEREL]     := rA3Rel.Q;
+axisPulse[2, AXCMD_AUTOMOVE]    := rA3Auto.Q;
+axisPulse[2, AXCMD_MOVEBUFFER]  := rA3Buf.Q;
+axisPulse[2, AXCMD_REQ_DISABLE] := rA3Dis.Q;
+axisEnableReq[2] := HMI.LegAngle.Cmd.bEnable;
+axisJogPos[2]    := HMI.LegAngle.Cmd.bJogPos;
+axisJogNeg[2]    := HMI.LegAngle.Cmd.bJogNeg;
 
 (*--- 三轴脉冲命令位消费后回清（bEnable/bJogPos/bJogNeg 电平不清） ---*)
 HMI.ChestImpact.Cmd.bReset           := FALSE;
