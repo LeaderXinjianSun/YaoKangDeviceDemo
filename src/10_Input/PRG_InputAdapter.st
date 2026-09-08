@@ -8,7 +8,7 @@
             pushEnableReq/jogPushUp/jogPushDown）；
             HMI 脉冲命令位回清（消费后清零；电平位不清、同字反馈位不碰）。
   读入：  物理 I_Estop1/I_Estop2/I_SafeRelay/I_ResetBtn/I_PusherOrigin、
-          HC_Counter（Axis_推杆 高速计数器，Position=mm）、
+          HC_Counter（内联高速计数器，Axis_电推杆，Position 直接为 REAL，单位 mm）、
           HMI.Condition.Cmd.*、HMI.Sys.Cmd.*、三轴 Cmd、TailTilt.Cmd.*。
   命令语义：
     脉冲命令 = HMI 置位按钮 → 本程序 R_TRIG 锁存为内部 trig/axisPulse（单扫）
@@ -22,12 +22,12 @@
 ==========================================================================*)
 PROGRAM PRG_InputAdapter
 VAR
-    (* 推杆位置高速计数器：开关型电推杆无 AD，HC_Counter 读 Axis_推杆 计数轴，
-       Position 单位 mm（H5U 高速计数器组态内标定为 mm）；FB 实例仅局部 VAR。
-       去抖 TONR 为内联指令 TONR(IN:=,PT:=,Q=>布尔位)，其 Q=> 输出 BOOL
-       （iaT*Db）、PT 时间常数 iaTDbTime 及 HC_Counter 的 Position/Valid/
-       Error/ErrorID 承接位均上移为 GVL_Internal 全局 ia* 简单变量。 *)
-    fbPusherHsc   : HC_Counter;   (* 推杆位置高速计数器实例（Axis_推杆） *)
+    (* 推杆位置高速计数器：开关型电推杆无 AD，位置由 HC_Counter 内联指令读
+       Axis_电推杆 计数轴，Position 直接为 REAL（单位 mm，H5U 高速计数器组态内
+       标定为 mm）。HC_Counter 与 TONR 同属内联指令，不声明实例、直接调用。
+       去抖 TONR 同为内联 TONR(IN:=,PT:=,Q=>布尔位)，其 Q=> 输出 BOOL（iaT*Db）、
+       PT 时间常数 iaTDbTime 及 HC_Counter 的 Position/Valid/Error/ErrorID
+       承接位均上移为 GVL_Internal 全局 ia* 简单变量。 *)
 
     (* 上升沿检测：H5U 类型为 TRIG.R_TRIG（功能块实例，仅局部 VAR 可声明），
        .Q 每扫转写全局 BOOL 脉冲位；全局 GVL 不支持功能块实例。
@@ -105,19 +105,21 @@ ioPusherOrigin := iaTOriginDb;
 TONR(IN := I_ResetBtn, PT := iaTDbTime, Q => iaTResetDb);
 ioResetBtn := iaTResetDb;
 
-(*--- 推杆位置：HC_Counter 高速计数器读 mm（开关型电推杆无 AD；算法蓝本：推杆轴控制方式.txt）。
-      Enable 常使能；Axis 绑 H5U 高速计数器组态轴 Axis_推杆；Position 单位 mm。 ---*)
-fbPusherHsc(Enable := TRUE,
-            Axis   := Axis_推杆,
-            Invert := FALSE,
-            Valid  => iaBHscValid,
-            Position => iaDiHscPos,
-            Velocity => ,
-            Direction => ,
-            CommandAborted => ,
-            Error  => iaBHscError,
-            ErrorID => iaWHscErrId);
-rPusherPosMm    := DINT_TO_REAL(iaDiHscPos);   (* mm 位置镜像（REAL，供几何解算） *)
+(*--- 推杆位置：HC_Counter 内联高速计数器读 mm（开关型电推杆无 AD；算法蓝本：推杆轴控制方式.txt）。
+      HC_Counter 为内联指令（同 TONR，不声明实例，直接调用）；Enable 常使能；
+      Axis 绑 H5U 高速计数器组态轴 Axis_电推杆；Invert 为 INT 方向取反（0=不取反）；
+      Position 直接输出 REAL（单位 mm）；Velocity/Direction/CommandAborted 不用留空。 ---*)
+HC_Counter(Enable := TRUE,
+           Axis   := Axis_电推杆,
+           Invert := 0,
+           Valid  => iaBHscValid,
+           Position => iaDiHscPos,
+           Velocity => ,
+           Direction => ,
+           CommandAborted => ,
+           Error  => iaBHscError,
+           ErrorID => iaWHscErrId);
+rPusherPosMm    := iaDiHscPos;   (* mm 位置镜像（HC_Counter.Position 即 REAL，直接赋值） *)
 bPusherPosValid := iaBHscValid AND NOT iaBHscError;
 
 

@@ -7,8 +7,9 @@
     复位按钮：I_ResetBtn=X7
     推杆原点：I_PusherOrigin=X5；推杆限位：正/负（未接线，预留无地址）
     推杆输出：Q_Pusher_Up=Y5（上行/正转）、Q_Pusher_Down=Y6（下行/反转）
-    推杆位置：开关型电推杆无 AD，位置由 HC_Counter 高速计数器轴读得（单位 mm，
-              轴在 H5U 高速计数器组态中定义，Axis_推杆 须与组态轴名逐字一致）
+    推杆位置：开关型电推杆无 AD，位置由 HC_Counter 内联指令高速计数器轴读得
+              （单位 mm，Position 直接为 REAL；轴在 H5U 高速计数器组态中定义，
+              Axis_电推杆 须与组态轴名逐字一致）
   注：InoProShop 中 X0..X7 ↔ %IX0.0..%IX0.7、Y0..Y7 ↔ %QX0.0..%QX0.7，
       下载后须按硬件组态核对 X/Y 与 %IX/%QX 映射；以下 % 地址由 Xn/Yn 推出。
   EtherCAT：3× M900 伺服轴引用 Axis_胸背/臀盘/臀腿在 H5U 配置文件（设备树）
@@ -34,7 +35,7 @@ VAR_GLOBAL
     Axis_臀盘      : AXIS_REF;         (* 扭角轴（SeatTwist）  *)
     Axis_臀腿      : AXIS_REF;         (* 转角轴（LegAngle）   *)
 
-    (*--- 高速计数器轴：尾板推杆位置反馈（H5U 高速计数器组态已定义，HC_Counter 引用；
-          Position 为 mm 单位；轴名须与组态逐字一致） ---*)
-    Axis_推杆      : AXIS_REF;         (* 推杆位置计数轴（TailTilt，mm） *)
+    (*--- 高速计数器轴：尾板推杆位置反馈（H5U 高速计数器组态已定义，HC_Counter 内联引用；
+          Position 直接为 REAL，单位 mm；轴名须与组态逐字一致） ---*)
+    Axis_电推杆    : AXIS_REF;         (* 推杆位置计数轴（TailTilt，mm） *)
 END_VAR

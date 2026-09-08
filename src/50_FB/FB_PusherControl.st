@@ -5,7 +5,7 @@
         惯性补偿、软限位；bHomed 与 bCalibrated 解耦；未校准/参考无效禁自动
         定位（报 3024）。
   位置反馈（真实推杆，无 AD）：开关型电推杆 Y5/Y6 正反转，位置由 HC_Counter
-        高速计数器读得，单位 mm（rPosMm，INPUT_ADAPTER 采集自 Axis_推杆）。
+        高速计数器读得，单位 mm（rPosMm，INPUT_ADAPTER 内联 HC_Counter 采集自 Axis_电推杆，Position 直接为 REAL）。
         角度由几何解算（算法蓝本：推杆轴控制方式.txt）：
           倾斜长度_1 = 倾斜零位偏置(PUSHER_GEO_TILT0_MM) + 当前位置(mm)，钳 >=0；
           cosC = (垂直² + 平行² − 倾斜_1²) / (2·垂直·平行)，cosC 钳到 [-1,1]；
@@ -574,7 +574,7 @@ END_IF;
   8) 状态结构体回填（HMI.TailTilt.Status 全量）
 ==========================================================================*)
 stStatus.rCurrAngle       := rCurrAngle;
-stStatus.rCurrPosMm       := rPosMm;
+stStatus.rCurrPulse       := rPosMm;   (* CSV 字段名 rCurrPulse（原 AD/脉冲位置量），本硬件镜像 HC_Counter mm *)
 stStatus.rPresetDeg       := stMotion.rManualPresetAngle;
 stStatus.iErrorCode       := iErrorCode;
 stStatus.iRetryCount      := iRetryCount;

@@ -211,13 +211,19 @@ P0 契约冻结
 ## 5. 编码与评审规范要点
 
 - **汇川 H5U 平台语法约定（与标准 IEC 61131-3 写法不同，全工程强制，勿再按 IEC 惯例写）**：
-  - **定时器不声明 TON/TOF/TP 实例**，一律用内联指令，定时结果由 `Q=>` 直接落到一个 **BOOL** 变量：
-    `TONR(IN := <条件>, PT := <时间常量或TIME变量>, Q => <BOOL位>);`
-    需要定时时，在局部 VAR 声明一个 BOOL（如 `tStepTimer : BOOL;`），调用 `TONR(IN:=..., PT:=..., Q=>tStepTimer);`，之后**直接读 `tStepTimer`**（不是 `tStepTimer.Q`）。断电保持累计用 TONR；通电延时/断电延时按 H5U 指令集同样以内联形式调用。
+  - **★数组下标一律 base 0（从 0 开始）**：声明统一用"个数语法" `类型[N]`（N 个元素，合法下标 0..N-1），一维如 `BOOL[3]`/`REAL[16]`、二维如 `BOOL[3, 8]`（3 轴 × 8 命令）；**不要写** `[1..3]`/`[1..3,1..8]` 这类范围语法。轴数组内部下标固定 `0=Chest 冲击 / 1=Seat 扭角 / 2=Leg 转角`；命令维 `AXCMD_RESET..AXCMD_REQ_DISABLE = 0..7`（`AXCMD_MAX` 保持 8 表个数，上界循环写 `TO AXCMD_MAX-1`）。FOR 循环从 0 起（`FOR i := 0 TO N-1`）；段表游标 0=首段、推进边界 `IF iBufSeg < (iSegCount-1)`。
+    - **"无活动轴"哨兵用 -1**（base 0 后合法区间 0..2，旧哨兵 4 废弃）；判活/判终 `>= 0` / `< 0`，用游标索引数组前须加 `>= 0` 防护。
+    - **严格区分"数组下标（改 base 0）"与"协议码/状态码（严禁误改）"**：`AXIS_ID_CHEST=1/LEG=2/SEAT=3/TAIL=4`（故障来源/轴号线协议）、`oaISel` 故障源选择码、`pwIPwrStep` 上电步号、`FC_ValidateParams` 入参 `iBlock=1..6`、`iErrField` 协议字段号、状态机步号（105/130/4000…）等是**协议/状态码，不是数组下标，保持原值不动**。内部游标当协议轴号上报时须显式映射（0→AXIS_ID_CHEST、1→AXIS_ID_SEAT、2→AXIS_ID_LEG，因 Seat=3/Leg=2 与下标不一致，直接赋值属 bug）。
+  - **★PRG/FC 不允许局部简单变量，一律上移为全局变量**：H5U 编辑器不接受 PROGRAM/FUNCTION 内的局部 BOOL/INT/DINT/REAL 等简单变量，须声明到 GVL（命名加块前缀，如 `cpIAxis`/`psI`/`trDiSnap`）。**唯一例外**：边沿功能块实例 `TRIG.R_TRIG`/`TRIG.F_TRIG` 只能在 PROGRAM/FUNCTION_BLOCK 的**局部 VAR** 声明（全局 GVL 不支持 FB 实例）。
+  - **★定时器不支持 TIME 类型，PT 为 DINT 毫秒**：平台无 TIME/T# 字面量，定时一律内联 `TONR`，`PT` 传 **DINT 毫秒数**（如 `PT := 300` 表 300ms，或用 DINT 变量/`SCAN_PERIOD_MS` 换算），**禁止** `T#300ms`/`TIME` 变量。定时结果由 `Q=>` 直接落到一个 **BOOL** 变量：
+    `TONR(IN := <条件>, PT := <DINT毫秒>, R := <复位>, Q => <BOOL位>, ET => <DINT>);`
+    定时器位声明为全局 BOOL（如 `iaTEstop1Db`），调用后**直接读该 BOOL**（不是 `.Q`）。断电保持累计用 TONR；通电延时/断电延时按 H5U 指令集同样以内联形式调用。
+    - **高速计数器 HC_Counter 同为内联指令（不是 FB 实例）**：不声明 `xxx : HC_Counter` 实例、不进功能块实例表，直接 `HC_Counter(...)` 调用（同 TONR）。推杆位置读轴 `Axis` 绑组态计数轴（`Axis_电推杆`）；`Invert` 为 **INT**（方向取反，`0`=不取反，不是 BOOL）；`Position` 输出**直接为 REAL（mm）**，承接变量声明 REAL、直接赋值，**无需 DINT_TO_REAL**；不用的输出（`Velocity`/`Direction`/`CommandAborted`）形参留空。
+  - **★平台不支持 WORD 类型**：16 位错误码/状态字一律用 **INT** 承接（如 HC_Counter.ErrorID、驱动器 Er.xxx 码）；无 USINT 截断场景用 INT 接字节。
   - **上升沿/下降沿仍声明功能块实例，但类型名必须带库前缀**：上升沿 `TRIG.R_TRIG`、下降沿 `TRIG.F_TRIG`（不是裸 `R_TRIG`/`F_TRIG`）。用法 `rTrigX(CLK := <信号>);` 后读 `rTrigX.Q`（`.Q` 读法不变）。
   - **CASE 分支标签必须用字面整数，不能用具名常量标识符**：H5U 编译器把 `VAR_GLOBAL CONSTANT` 的常量（如 `ST_STANDBY`）也当作变量，CASE 标签写常量名会编译报错。必须写数字、行尾注释具名码值，便于追溯：
     `10: // ST_STANDBY ...`（不要写 `ST_STANDBY:`）。具名常量仍用于 IF 比较、赋值、运算表达式（如 `IF iState = ST_STANDBY`、`iState := ST_HOMING`），仅 CASE 标签受限。
-  - **功能块实例只能在 PROGRAM / FUNCTION_BLOCK 的局部 VAR 声明**；全局 GVL 仅支持 BOOL/INT/DINT/REAL/STRING/IP/BYTE/指针。定型模式：局部 `TRIG.R_TRIG` 检边沿 → `.Q` 每扫转写一个全局 BOOL 脉冲位（`trigXxx`，脉冲天然单扫有效，无需清零）；定时用局部 BOOL + 内联 `TONR`。
+  - **功能块实例只能在 FUNCTION_BLOCK / 边沿场景的局部 VAR 声明**（全局 GVL 不支持 FB 实例；`AXIS_REF` 轴引用由组态自动生成全局，属例外）。GVL 支持 BOOL/INT/DINT/REAL/STRING/IP/BYTE 及其**数组、结构体**（如 `REAL[3]`、`Stru_AxisLimitConfig[3]`）。定型模式：局部 `TRIG.R_TRIG` 检边沿 → `.Q` 每扫转写一个全局 BOOL 脉冲位（`trigXxx`，脉冲天然单扫有效，无需清零）；**定时用全局 BOOL + 内联 `TONR`**（PRG/FC 内不得声明局部简单变量，见上条）。
   - **例外**：`AXIS_REF` 轴引用（Axis_胸背/臀盘/臀腿）由 EtherCAT 设备树/H5U 组态自动生成为全局变量，在 GVL_IoMap 中保留，但不走变量表 CSV 导入。
   - **导出 InoProShop 变量表 CSV 时**：定时器位按 **BOOL** 录入（不是 TON）；`TRIG.R_TRIG` 实例录"功能块实例"表（类型 `TRIG.R_TRIG`），不进普通变量表。
 - 三轴块、错误条目、参数块统一结构体，三轴复用同一映射，避免三份分叉。

@@ -150,7 +150,7 @@ VAR_GLOBAL
     iaTOriginDb    : BOOL;             (* 推杆原点传感器去抖输出（X5） *)
     iaTResetDb     : BOOL;             (* 复位按钮去抖输出（X7） *)
     iaTDbTime      : DINT := 30;       (* 去抖时间常数（ms，内联 TONR PT 为 DINT 毫秒，非 TIME） *)
-    iaDiHscPos     : DINT;             (* HC_Counter.Position 原始位置（mm，DINT） *)
+    iaDiHscPos     : REAL;             (* HC_Counter.Position 位置（mm，指令直接输出 REAL） *)
     iaBHscValid    : BOOL;             (* HC_Counter.Valid *)
     iaBHscError    : BOOL;             (* HC_Counter.Error *)
     iaWHscErrId    : INT;              (* HC_Counter.ErrorID（16 位错误码，平台无 WORD，用 INT 承接） *)
