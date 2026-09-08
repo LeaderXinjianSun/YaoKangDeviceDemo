@@ -13,7 +13,7 @@
   规则：任务模块不直接切态，只上报 iPhase 与任务状态位；切换须过门控
         （角色/权限码/资格/安全），门控拒绝写 iBlockReason（45xx）供 HMI 提示；
         急停态无条件穿透；离态清残留电平命令。
-  READY_CHECK：diReadyCheckResult 为位掩码（READY_BIT_*），0=全过；不齐时
+  READY_CHECK：diReadyCheckResult 为位掩码（READY_MASK_*），0=全过；不齐时
         每 100 扫提交一次 7001 Warning，掩码值随 iVal1 上报。
 ==========================================================================*)
 PROGRAM PRG_ModeManager
@@ -26,25 +26,25 @@ mmBEngineer := (HMI.Sys.Cmd.iUserRole = ROLE_ENGINEER)
          AND (HMI.Sys.Cmd.iAuthCode = AUTH_CODE_ENGINEER);
 iUserRole := HMI.Sys.Cmd.iUserRole;   (* 角色镜像（操作员/工程师） *)
 
-(*--- 六项资格掩码（位定义见 GVL_CONST READY_BIT_*） ---*)
-mmDiMask := DINT#0;
+(*--- 六项资格掩码（位值见 GVL_CONST READY_MASK_*，预计算位值直接 OR；LiteST 的 SHL/SHR 第一操作数不能是常量） ---*)
+mmDiMask := 0;
 IF NOT bAllAxesRef THEN
-    mmDiMask := mmDiMask OR SHL(DINT#1, READY_BIT_REF);      (* bit5 参考无效 *)
+    mmDiMask := mmDiMask OR READY_MASK_REF;      (* bit5 参考无效 *)
 END_IF;
 IF NOT bRunParamValid OR NOT bParamBootDone THEN
-    mmDiMask := mmDiMask OR SHL(DINT#1, READY_BIT_PARAM);   (* bit1 参数无效 *)
+    mmDiMask := mmDiMask OR READY_MASK_PARAM;   (* bit1 参数无效 *)
 END_IF;
 IF NOT HMI.Sys.Status.bPowerOn THEN
-    mmDiMask := mmDiMask OR SHL(DINT#1, READY_BIT_HW);      (* bit2 硬件未上电 *)
+    mmDiMask := mmDiMask OR READY_MASK_HW;      (* bit2 硬件未上电 *)
 END_IF;
 IF HMI.Sys.Error.bActive THEN
-    mmDiMask := mmDiMask OR SHL(DINT#1, READY_BIT_HEALTH);  (* bit3 活动 Critical *)
+    mmDiMask := mmDiMask OR READY_MASK_HEALTH;  (* bit3 活动 Critical *)
 END_IF;
 IF NOT bAllAxesAtInit THEN
-    mmDiMask := mmDiMask OR SHL(DINT#1, READY_BIT_POS);     (* bit4 未在初始位 *)
+    mmDiMask := mmDiMask OR READY_MASK_POS;     (* bit4 未在初始位 *)
 END_IF;
 IF NOT (retainZeroComm[0] AND retainZeroComm[1] AND retainZeroComm[2] AND retainTailZeroComm) THEN
-    mmDiMask := mmDiMask OR SHL(DINT#1, READY_BIT_ZERO);    (* bit0 未建零 *)
+    mmDiMask := mmDiMask OR READY_MASK_ZERO;    (* bit0 未建零 *)
 END_IF;
 mmBReadyAll := (mmDiMask = 0);
 

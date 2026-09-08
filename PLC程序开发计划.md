@@ -223,6 +223,8 @@ P0 契约冻结
   - **上升沿/下降沿仍声明功能块实例，但类型名必须带库前缀**：上升沿 `TRIG.R_TRIG`、下降沿 `TRIG.F_TRIG`（不是裸 `R_TRIG`/`F_TRIG`）。用法 `rTrigX(CLK := <信号>);` 后读 `rTrigX.Q`（`.Q` 读法不变）。
   - **CASE 分支标签必须用字面整数，不能用具名常量标识符**：H5U 编译器把 `VAR_GLOBAL CONSTANT` 的常量（如 `ST_STANDBY`）也当作变量，CASE 标签写常量名会编译报错。必须写数字、行尾注释具名码值，便于追溯：
     `10: // ST_STANDBY ...`（不要写 `ST_STANDBY:`）。具名常量仍用于 IF 比较、赋值、运算表达式（如 `IF iState = ST_STANDBY`、`iState := ST_HOMING`），仅 CASE 标签受限。
+  - **★常数（字面值）禁止 IEC 类型前缀，只写裸值/进制前缀/LD 风格**：LiteST 不支持 `DINT#0`、`INT#1`、`REAL#1.0`、`TIME#..`、`BOOL#TRUE` 等类型前缀字面值（编译报错）。常数只能写：①裸十进制（`a := 100;`）；②进制前缀+下划线分段（`10#100_10`、`16#FF_AE_12`、`2#1100_1111`）；③LD 风格（`K100`=十进制 100、`H..`=十六进制、`E..`=浮点）。类型由声明/上下文隐式确定。
+  - **★SHL/SHR 的第一个操作数不能是常量，必须是变量**：`SHL(1, n)`/`SHR(1, n)` 第一操作数写常数非法。位掩码不要在运行期 `SHL(常量, 位号)`，而应在 GVL_CONST 把**位值预计算为掩码常量**（如 `READY_MASK_ZERO : INT := 16#1;`、`16#2`/`16#4`/`16#8`/`16#10`/`16#20`…），运行期只做 `mask := mask OR READY_MASK_xxx;`（彻底不用 SHL）。确需移位时第一操作数必须传一个变量。
   - **功能块实例只能在 FUNCTION_BLOCK / 边沿场景的局部 VAR 声明**（全局 GVL 不支持 FB 实例；`AXIS_REF` 轴引用由组态自动生成全局，属例外）。GVL 支持 BOOL/INT/DINT/REAL/STRING/IP/BYTE 及其**数组、结构体**（如 `REAL[3]`、`Stru_AxisLimitConfig[3]`）。定型模式：局部 `TRIG.R_TRIG` 检边沿 → `.Q` 每扫转写一个全局 BOOL 脉冲位（`trigXxx`，脉冲天然单扫有效，无需清零）；**定时用全局 BOOL + 内联 `TONR`**（PRG/FC 内不得声明局部简单变量，见上条）。
   - **例外**：`AXIS_REF` 轴引用（Axis_胸背/臀盘/臀腿）由 EtherCAT 设备树/H5U 组态自动生成为全局变量，在 GVL_IoMap 中保留，但不走变量表 CSV 导入。
   - **导出 InoProShop 变量表 CSV 时**：定时器位按 **BOOL** 录入（不是 TON）；`TRIG.R_TRIG` 实例录"功能块实例"表（类型 `TRIG.R_TRIG`），不进普通变量表。
