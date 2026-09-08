@@ -20,10 +20,13 @@
 ==========================================================================*)
 PROGRAM PRG_Main
 
-(*--- 扫描看门狗（周期以任务组态为准，超时交 SAFETY/ERROR 处理；
-      H5U 定时器为内联指令 TONR(IN:=,PT:=,Q=>布尔位)，无需 TON 实例；
-      mnTScanWatchdog 即看门狗 TONR 的 Q=> 输出 BOOL（超时置位）。 ---*)
-TONR(IN := TRUE, PT := T#50MS, Q => mnTScanWatchdog);
+(*--- 扫描看门狗（预留状态位 mnTScanWatchdog）：
+      真实周期看门狗为 H5U 任务组态/控制器硬件功能（扫描周期超时由控制器停机/进安全态），
+      应用层单扫描任务无法用定时器自测周期超时（超时当扫不执行即无法上报；恒 IN 定时器
+      反而会每开机 50ms 恒触发误报，故原内联 TONR 已移除）。
+      现场处置策略待确认：若组态提供看门狗超时系统变量/特殊任务可置 mnTScanWatchdog，
+      SAFETY_MANAGER 已接上升沿上报 1007(ERR_SCAN_WATCHDOG, Critical)。
+      （H5U 定时器为内联指令 TONR(IN:=,PT:=,Q=>布尔位)，无需 TON 实例。） ---*)
 
 (*--- 固定扫描链 ---*)
 PRG_CmdPreclear();

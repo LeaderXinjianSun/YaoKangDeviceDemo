@@ -10,8 +10,9 @@
           （iUserRole/iAuthCode/iWorkMode/bServiceAuthConfirm/bNoLoadConfirm）；
           资格位 bAllAxesIdle/Ref/AtInit、bParamBootDone/bRunParamValid；
           任务上报：Condition.Status.bDone/bError、HMI.Sys.Status.bSelfTestDone。
-  规则：任务模块不直接切态，只上报 iPhase/iBlockReason 与任务状态位；切换须过门控
-        （角色/权限码/资格/安全）；急停态无条件穿透；离态清残留电平命令。
+  规则：任务模块不直接切态，只上报 iPhase 与任务状态位；切换须过门控
+        （角色/权限码/资格/安全），门控拒绝写 iBlockReason（45xx）供 HMI 提示；
+        急停态无条件穿透；离态清残留电平命令。
   READY_CHECK：diReadyCheckResult 为位掩码（READY_BIT_*），0=全过；不齐时
         每 100 扫提交一次 7001 Warning，掩码值随 iVal1 上报。
 ==========================================================================*)
@@ -75,6 +76,29 @@ ELSE
     HMI.Sys.Status.iHealthLevel := HEALTH_UNKNOWN;    (* 3 未就绪 *)
 END_IF;
 
+(*--- 阻塞原因 iBlockReason（MODE_MANAGER 唯一写；稳态原因为主，下方 CASE 内
+       工程师门控拒绝分支以 4503 覆盖本扫值）。安全/故障优先，其余按就绪缺项；
+       0=无阻塞。与 diReadyCheckResult 掩码并行：掩码供调试，原因码供 HMI 显示。 ---*)
+iBlockReason := 0;
+IF bHardEstop OR bSoftEstop OR bSafetyStop THEN
+    iBlockReason := BLOCK_REASON_SAFETY;   (* 4501 安全链动作（急停/保护停机中） *)
+ELSIF HMI.Sys.Error.bActive THEN
+    iBlockReason := BLOCK_REASON_FAULT;    (* 4502 活动 Critical，需复位 *)
+ELSIF (iState = ST_STANDBY) OR (iState = ST_SERVICE_REQUIRED) THEN
+    (* 待机/需服务为操作入口态：按就绪缺项给出最高优先原因（掩码细化见 diReadyCheckResult） *)
+    IF NOT HMI.Sys.Status.bPowerOn THEN
+        iBlockReason := BLOCK_REASON_POWER;      (* 4504 硬件未上电 *)
+    ELSIF NOT (retainZeroComm[1] AND retainZeroComm[2] AND retainZeroComm[3] AND retainTailZeroComm) THEN
+        iBlockReason := BLOCK_REASON_ZERO;       (* 4505 未建零，需维护建零 *)
+    ELSIF NOT bRunParamValid OR NOT bParamBootDone THEN
+        iBlockReason := BLOCK_REASON_PARAM;      (* 4506 运行参数无效 *)
+    ELSIF NOT bAllAxesRef THEN
+        iBlockReason := BLOCK_REASON_REF;        (* 4507 轴参考无效，需回零 *)
+    ELSIF NOT bAllAxesAtInit THEN
+        iBlockReason := BLOCK_REASON_POS;        (* 4508 未在初始位 *)
+    END_IF;
+END_IF;
+
 
 (*============================================================================
   1. 急停最高优先级：任何状态无条件穿透
@@ -129,6 +153,9 @@ ELSE
             (*--- 急停已在顶层穿透；停止/复位类 ---*)
             IF trigSysReset AND HMI.Sys.Error.bActive THEN
                 iState := ST_RESET;          (* 50 *)
+            (*--- 工程师门控拒绝：维护/标定/自检脉冲到但非工程师 → 4503（不切态） ---*)
+            ELSIF (trigServiceMode OR trigCalibrate OR trigStartSelfTest) AND NOT mmBEngineer THEN
+                iBlockReason := BLOCK_REASON_AUTH;   (* 4503 需工程师角色 + 权限码 16#5A *)
             (*--- 维护模式（工程师） ---*)
             ELSIF trigServiceMode AND mmBEngineer THEN
                 iState := ST_SERVICE;        (* 30 *)
@@ -156,6 +183,8 @@ ELSE
                 iState := ST_RESET;          (* 50 *)
             ELSIF trigServiceMode AND mmBEngineer THEN
                 iState := ST_SERVICE;        (* 30 *)
+            ELSIF (trigSysReset OR trigServiceMode) AND NOT mmBEngineer THEN
+                iBlockReason := BLOCK_REASON_AUTH;   (* 4503 非工程师操作被拒 *)
             END_IF;
 
         (*---------- 20 自动流程运行：任务完成回 STANDBY；停止→STOPPING；急停顶层穿透 ----------*)
@@ -239,6 +268,8 @@ ELSE
 
             IF trigSysReset AND mmBEngineer THEN
                 iState := ST_RESET;          (* 50 *)
+            ELSIF trigSysReset AND NOT mmBEngineer THEN
+                iBlockReason := BLOCK_REASON_AUTH;   (* 4503 非工程师操作被拒 *)
             END_IF;
 
     ELSE

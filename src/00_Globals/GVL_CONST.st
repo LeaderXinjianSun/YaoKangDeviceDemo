@@ -49,6 +49,7 @@ VAR_GLOBAL CONSTANT
     (*--- 错误码段位约定：
        1xxx 系统/急停  11xx 初始化/电源  12xx 紧急回零/防夹/跟随  13xx 自检
        2xxx 三轴       3xxx 推杆(3021-3025/3101-3107)  4xxx 回零
+       45xx 阻塞原因(iBlockReason,MODE_MANAGER 写,HMI 显示"当前活跃任务阶段与阻塞原因")
        5xxx 参数/身份(5001-5003/5005/5006)                          7xxx 调理前检查
        子码约定：轴故障 iSubCode=驱动器 Er.xxx；gFaultSource 用 AXIS_ID_* / SRC_*。
        级别：1001/1002/1003 段码由 ERROR_MANAGER 按码表定级（Critical 需手动复位）。 ---*)
@@ -107,6 +108,19 @@ VAR_GLOBAL CONSTANT
     ERR_HOME_TIMEOUT     : INT := 4001;   (* 普通回零全流程超时 *)
     ERR_HOME_REFUSE      : INT := 4002;   (* 回零被拒（安全/参考条件不满足） *)
     ERR_HOME_AXIS        : INT := 4003;   (* 某轴回初始位失败（子码=轴号） *)
+
+    (*===== 45xx 阻塞原因（iBlockReason，MODE_MANAGER 唯一写，HMI 显示"当前活跃任务阶段与阻塞原因"）
+       0=无阻塞；>0 时 HMI 置灰启动/权限入口并提示。原因码为"就绪态最新阻塞"，
+       与 diReadyCheckResult 位掩码并行：掩码供调试，原因码供界面直接显示。 =====*)
+    BLOCK_REASON_SAFETY  : INT := 4501;   (* 安全链动作（硬/软急停或保护停机中） *)
+    BLOCK_REASON_FAULT   : INT := 4502;   (* 存在活动 Critical 故障，需复位 *)
+    BLOCK_REASON_AUTH    : INT := 4503;   (* 权限不足（维护/标定/自检需工程师角色+权限码 16#5A） *)
+    BLOCK_REASON_POWER   : INT := 4504;   (* 硬件未上电/伺服未就绪 *)
+    BLOCK_REASON_ZERO    : INT := 4505;   (* 未建零（三轴/推杆零点未标定，需维护建零） *)
+    BLOCK_REASON_PARAM   : INT := 4506;   (* 运行参数无效（参数区未装载或校验未过） *)
+    BLOCK_REASON_REF     : INT := 4507;   (* 轴参考无效（未回零/参考丢失） *)
+    BLOCK_REASON_POS     : INT := 4508;   (* 未在初始位（轴当前位置偏离初始位，需回零） *)
+    BLOCK_REASON_BUSY    : INT := 4509;   (* 系统忙（自动/自检/回零/标定等任务进行中） *)
 
     (*===== 5xxx 参数 / 身份 =====*)
     ERR_PARAM_LOCKED        : INT := 5004;   (* 参数 Apply/ResetDefault 被拒：自动流程运行中，运行区快照锁定 *)

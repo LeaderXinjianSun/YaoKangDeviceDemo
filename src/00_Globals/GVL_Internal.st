@@ -245,7 +245,7 @@ VAR_GLOBAL
     pwBDisReq   : BOOL[1..3];          (* 单轴断使能请求锁存（AXCMD_REQ_DISABLE 脉冲） *)
 
     (*--- PRG_Main（主循环/看门狗） ---*)
-    mnTScanWatchdog : BOOL;            (* 扫描看门狗超时标志（内联 TONR Q=>，T#50MS） *)
+    mnTScanWatchdog : BOOL;            (* 扫描看门狗超时标志（预留：待绑定 H5U 任务看门狗系统变量；置位时 SAFETY_MANAGER 上报 1007；无应用内 TONR 驱动，详见 PRG_Main 注释） *)
 
     (*--- FC_ValidateParams（参数校验函数，函数内私有工作变量） ---*)
     vpI   : INT;                       (* 段索引 1..16（FOR 循环） *)

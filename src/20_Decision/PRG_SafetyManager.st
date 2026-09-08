@@ -33,6 +33,7 @@ VAR
     rTrigEncoder   : TRIG.R_TRIG;
     rTrigHwLimit   : TRIG.R_TRIG;
     rTrigOverForce : TRIG.R_TRIG;
+    rTrigWatchdog  : TRIG.R_TRIG;
 END_VAR
 
 (*------------------------------------------------------------
@@ -142,8 +143,16 @@ rTrigSoft(CLK     := bSoftEstop);
 rTrigEncoder(CLK  := smBAnyEncoderFlt);
 rTrigHwLimit(CLK  := smBAnyHwLimit);
 rTrigOverForce(CLK := smBAnyOverForce);
+rTrigWatchdog(CLK := mnTScanWatchdog);
 
-IF rTrigHard.Q THEN
+(* 扫描看门狗 1007：本位预留，正常不置位（真实看门狗为 H5U 任务组态/硬件，
+   超时由控制器停机/进安全态；详见 PRG_Main 注释）。一旦被系统变量置位，
+   作为最高优先级 Critical 上报一次，交 ModeManager 转 RESET 收口。处置策略待现场确认。 *)
+IF rTrigWatchdog.Q THEN
+    gFaultLevel := 2; gFaultCode := ERR_SCAN_WATCHDOG; gFaultSource := SRC_SAFETY;
+    gFaultSubCode := 0; gFaultVal1 := 0; gFaultVal2 := 0;
+    gFaultSubmit := TRUE;
+ELSIF rTrigHard.Q THEN
     gFaultLevel := 2; gFaultCode := ERR_HARD_ESTOP; gFaultSource := SRC_SAFETY;
     gFaultSubCode := 0; gFaultVal1 := 0; gFaultVal2 := 0;
     gFaultSubmit := TRUE;
