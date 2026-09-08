@@ -330,7 +330,7 @@ END_TYPE
 TYPE Stru_PusherStatus :
 STRUCT
     rCurrAngle              : REAL;     // 当前角度（HC_Counter mm 位置经余弦定理/ACOS 解算）
-    rCurrPosMm              : REAL;     // 当前推杆位置（mm，HC_Counter.Position 镜像）
+    rCurrPulse              : REAL;     // CSV 字段名照抄（原 AD/脉冲位置量）；本硬件无 AD，由 HC_Counter 位置(mm)镜像填入
     rPresetDeg              : REAL;     // 最近一次 Preset 目标角度
     rReserved               : REAL;
     iErrorCode              : INT;      // 错误码 (5001=堵转 5002=超时 5003=重试超限)
@@ -372,6 +372,14 @@ STRUCT
     rInitialPosition        : REAL;     // 初始位置角度 (°，回零目标)
     rMinTravel              : REAL;     // 最小行程保护 (°，堵转检测前必须走过)
     rHomePosition           : REAL;     // 原点位置 (°)
+    rPulsePerDeg            : REAL;     // 脉冲当量 (Pulse/°)
+    rAdOffset               : REAL;     // ★AD 字段保留不赋值：AD 零偏（无 AD 硬件，位置来自 HC_Counter）
+    rAdScale                : REAL;     // ★AD 字段保留不赋值：AD 标度（无 AD 硬件）
+    rFitK0                  : REAL;     // ★AD 字段保留不赋值：AD 拟合系数 K0（无 AD 硬件）
+    rFitK1                  : REAL;     // ★AD 字段保留不赋值：AD 拟合系数 K1（无 AD 硬件）
+    rFitK2                  : REAL;     // ★AD 字段保留不赋值：AD 拟合系数 K2（无 AD 硬件）
+    rFitK3                  : REAL;     // ★AD 字段保留不赋值：AD 拟合系数 K3（无 AD 硬件）
+    rAdJumpLimitDeg         : REAL;     // ★AD 字段保留不赋值：AD 跳变限幅 (°)（无 AD 硬件）
     rInertiaUp              : REAL;     // 角度增大方向惯性补偿 (°，提前停)
     rInertiaDown            : REAL;     // 角度减小方向惯性补偿 (°，提前停)
     rStallThreshold         : REAL;     // 堵转位移阈值 (°)
@@ -380,7 +388,11 @@ STRUCT
     diTimeout               : DINT;     // 寻传感器/标定超时 (ms)
     diReverseDelay          : DINT;     // 反向缓冲延时 (ms)
     diStopCheck             : DINT;     // 停车滑行等待 (ms)
+    diAdMin                 : DINT;     // ★AD 字段保留不赋值：AD 采样下限原始码（无 AD 硬件）
+    diAdMax                 : DINT;     // ★AD 字段保留不赋值：AD 采样上限原始码（无 AD 硬件）
+    diAdSampleMs            : DINT;     // ★AD 字段保留不赋值：AD 采样周期 (ms)（无 AD 硬件）
     iMaxRetries             : INT;      // 最大修正次数
+    iReferenceMode          : INT;      // ★AD 字段保留不赋值：参考模式 0=脉冲+HC 1=AD拟合（本硬件固定走 0，不写入）
     iPad                    : INT;      // 填充
     bInvertPusherDirection  : BOOL;     // 输出方向取反（Y5/Y6 交换，对齐物理方向）
 END_STRUCT
@@ -592,13 +604,16 @@ END_TYPE
 
 (*---------------------------------------------------------------------------
   尾板位置/角度反馈（D936–D940，不挤占 TailTilt 主协议）
-  真实推杆无 AD：位置来自 HC_Counter(mm)，角度由几何解算；布局保持 5 字不变。
+  字段名照抄 CSV（原为 AD 拟合反馈窗：拟合角/AD原始值/AD有效位）。
+  真实硬件无 AD：位置来自 HC_Counter(mm)、角度由几何解算——rAdAngle 填几何解算
+  角度、bAdValid 填 HC_Counter 有效位；diAdRaw（AD 原始码）无对应物理量，
+  保持 0 不赋值；布局 5 字不变。
 ---------------------------------------------------------------------------*)
 TYPE Stru_HMI_TailAdFeedback :
 STRUCT
-    rAngle      : REAL;     // 当前角度（°，几何解算镜像，D936–D937）
-    diPosMm     : DINT;     // 当前推杆位置（mm，HC_Counter.Position，D938–D939）
-    bPosValid   : BOOL;     // 位置有效（HC_Counter.Valid 且无 Error）
+    rAdAngle    : REAL;     // 字段名照抄 CSV（AD 拟合角）；本硬件填几何解算角度（°，D936–D937）
+    diAdRaw     : DINT;     // ★AD 字段保留不赋值：AD 原始码（无 AD 硬件，保持 0，D938–D939）
+    bAdValid    : BOOL;     // 字段名照抄 CSV（AD 有效位）；本硬件填 HC_Counter.Valid 且无 Error
     bPad0       : BOOL;     // 填充
 END_STRUCT
 END_TYPE

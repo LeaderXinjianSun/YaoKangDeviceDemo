@@ -220,8 +220,9 @@ fbPusher(
 (* 5.2 状态回填 HMI；标定完成单扫脉冲 bCalibDone 转跨环锁存 bPushCalibDoneLatch
        （环10 置、环8 ParamService 消费写 retainTailZeroComm；不入 CmdPreclear 清扫表） *)
 HMI.TailTilt.Status := fbPusher.stStatus;
-(* 几何解算角度回填 D936 窗口（mm/有效位由环3 Monitor 镜像，角度本环 fbPusher 才算出） *)
-HMI.TailTiltAdFeedback.rAngle := fbPusher.rCurrAngle;
+(* 几何解算角度回填 D936 窗口（bAdValid 由环3 Monitor 镜像，角度本环 fbPusher 才算出；
+   diAdRaw 为 AD 原始码字段，本硬件无 AD 保持 0 不赋值） *)
+HMI.TailTiltAdFeedback.rAdAngle := fbPusher.rCurrAngle;
 IF fbPusher.bCalibDone THEN
     bPushCalibDoneLatch := TRUE;
 END_IF;

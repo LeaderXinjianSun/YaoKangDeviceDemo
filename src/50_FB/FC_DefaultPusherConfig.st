@@ -2,7 +2,10 @@
   FC_DefaultPusherConfig —— 电推杆（尾板）配置工厂默认（P5）
   ----------------------------------------------------------------------------
   返回 Stru_PusherLimitConfig 出厂值：开关型电推杆 + HC_Counter(mm) + 几何解算，
-  全部角度阈值直接以 ° 为单位（无脉冲/AD 字段）；堵转/超时/换向缓冲/软限位保留。
+  全部角度阈值直接以 ° 为单位；堵转/超时/换向缓冲/软限位保留。
+  ★ 结构体含 CSV 保留的 AD 字段（rPulsePerDeg/rAdOffset/rAdScale/rFitK0~K3/
+    rAdJumpLimitDeg/diAdMin/diAdMax/diAdSampleMs/iReferenceMode）：本硬件无 AD，
+    工厂默认一律不赋值（保持 0，iReferenceMode=0 即“脉冲+HC”模式），仅占布局。
   ⚠ 角度°阈值（rMinTravel/rInertiaUp/Down/rStallThreshold）为占位，
     必须现场调试后 Save；几何长度/补偿常量在 GVL_CONST（PUSHER_GEO_*）。
 ==========================================================================*)
