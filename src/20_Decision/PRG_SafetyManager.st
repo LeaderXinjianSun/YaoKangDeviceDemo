@@ -60,7 +60,7 @@ smBAnyOverForce  := HMI.ChestImpact.Status.Force.bOverForceLatched
   2) 急停链
 ------------------------------------------------------------*)
 (* 2.1 双通道不一致：去抖 100ms 后判定（临界故障，拍急停安全侧，不单独驱动链） *)
-TONR(IN := smBChanMismatch, PT := T#100MS, Q => smTMismatch);
+TONR(IN := smBChanMismatch, PT := 100, Q => smTMismatch);  (* PT=DINT 毫秒：100ms *)
 
 (* 2.2 软急停触发锁存：HMI 脉冲置位；trigSysReset（无硬急停/保护停机）解除。
        注意区分：bSoftEstop 是"发生过软急停"事件/状态锁存（驱动上报、ModeManager 转 110），

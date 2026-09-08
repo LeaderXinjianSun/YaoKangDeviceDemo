@@ -147,11 +147,11 @@ VAR_GLOBAL
     iaTSafeRelayDb : BOOL;             (* 安全继电器去抖输出（X4 常开） *)
     iaTOriginDb    : BOOL;             (* 推杆原点传感器去抖输出（X5） *)
     iaTResetDb     : BOOL;             (* 复位按钮去抖输出（X7） *)
-    iaTDbTime      : TIME := T#30MS;   (* 去抖时间常数（内联 TONR PT） *)
+    iaTDbTime      : DINT := 30;       (* 去抖时间常数（ms，内联 TONR PT 为 DINT 毫秒，非 TIME） *)
     iaDiHscPos     : DINT;             (* HC_Counter.Position 原始位置（mm，DINT） *)
     iaBHscValid    : BOOL;             (* HC_Counter.Valid *)
     iaBHscError    : BOOL;             (* HC_Counter.Error *)
-    iaWHscErrId    : WORD;             (* HC_Counter.ErrorID *)
+    iaWHscErrId    : INT;              (* HC_Counter.ErrorID（16 位错误码，平台无 WORD，用 INT 承接） *)
 
     (*--- PRG_ErrorManager（环4 故障管理） ---*)
     emIPos     : INT;                  (* 队列游标（兼容保留） *)

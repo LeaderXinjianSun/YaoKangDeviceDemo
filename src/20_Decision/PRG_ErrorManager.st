@@ -91,7 +91,7 @@ END_IF;
 (*------------------------------------------------------------
   3) 警告通道：确认即清；否则存活 10s 自动消退（实时态类警告）
 ------------------------------------------------------------*)
-TONR(IN := HMI.Sys.Warning.bActive, PT := T#10S, Q => emTWarnAge);
+TONR(IN := HMI.Sys.Warning.bActive, PT := 10000, Q => emTWarnAge);  (* PT=DINT 毫秒：10s=10000ms *)
 IF HMI.Sys.Warning.bActive THEN
     IF trigAckError OR emTWarnAge THEN
         HMI.Sys.Warning.bActive := FALSE;
