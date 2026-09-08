@@ -1,0 +1,70 @@
+//推杆轴控制方式
+
+HC_Counter(Enable :=not test123,
+           Axis := 轴名称,
+           Invert := ,
+           Valid => ,
+           Position => 当前推杆位置,
+           Velocity => ,
+           Direction => ,
+           CommandAborted => ,
+           Error => ,
+           ErrorID => );
+if not test123 then
+   断电位置记录:=当前推杆位置;
+END_IF
+旋转中心倾斜长度_1:=旋转中心倾斜长度 + 当前推杆位置;
+IF 旋转中心倾斜长度_1 < 0 THEN
+    旋转中心倾斜长度_1 := 0;
+END_IF
+//余弦定理，Cos(c)
+test:=(旋转中心垂直长度*旋转中心垂直长度+旋转中心平行长度*旋转中心平行长度-旋转中心倾斜长度_1*旋转中心倾斜长度_1)/(2*旋转中心垂直长度*旋转中心平行长度);
+
+//角度计算
+当前角度:=180 - 72.6 - ACOS(test)*180/3.1416 + 角度补偿;
+
+
+
+//位置判断
+if 目标角度<当前角度+0.2 and 目标角度>当前角度-0.2 THEN
+	到达目标角度:=TRUE;
+ELSE
+	到达目标角度:=FALSE;
+END_IF
+//定位控制
+if 定位开始  THEN
+	定位中:=true;
+	定位开始:=false;
+	定位完成:=false;
+	step:=10;
+END_IF
+
+CASE step OF
+	10:	
+	if not 到达目标角度 then
+		IF 目标角度>当前角度 then
+			下降:=true;
+			上抬:=false;	
+			step:=20;
+		else 
+			下降:=false;
+			上抬:=true;	
+			step:=20;
+		END_IF
+	ELSE
+		下降:=false;
+		上抬:=false;
+		step:=30;
+	END_IF
+	20:
+	if 到达目标角度 THEN
+		下降:=false;
+   	    上抬:=false;
+		step:=30;
+	END_IF
+	30:
+	定位完成:=true;
+	定位中:=false;
+	step:=0;
+	
+END_CASE;

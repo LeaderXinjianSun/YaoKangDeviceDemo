@@ -2,8 +2,8 @@
   PRG_Main —— 主扫描（唯一任务入口，固定调用链，顺序不可调整）
   ----------------------------------------------------------------------------
   扫描链（开发计划 P1）：
-    1  PRG_CmdPreclear    命令残留清理（脉冲边沿方案后主要兜底电平离态）
-    2  PRG_InputAdapter   I/O 镜像去抖 + HMI 命令解析（R_TRIG 脉冲/电平）
+    1  PRG_CmdPreclear    命令残留清理：每扫首环兜底清全部内部脉冲位（P2 落地）
+    2  PRG_InputAdapter   I/O 镜像去抖 + HMI 命令解析（R_TRIG 锁存脉冲/镜像电平 + HMI 脉冲位回清）
     3  PRG_Monitor        AD/传感器采集与 plausibility 诊断
     4  PRG_ErrorManager   错误唯一写入：活动错误/警告/历史队列
     5  PRG_SafetyManager  安全独立常驻：急停链/防夹/超力/堵转/限位
@@ -19,14 +19,11 @@
             HMI_DeviceIdentityWrite AT %MW1010（见 GVL_HMI.st）。
 ==========================================================================*)
 PROGRAM PRG_Main
-VAR
-    (* H5U 定时器为内联指令 TONR(IN:=,PT:=,Q=>布尔位)，无需 TON 实例；
-       tScanWatchdog 即看门狗 TONR 的 Q=> 输出 BOOL（超时置位）。 *)
-    tScanWatchdog   : BOOL;   (* 扫描看门狗超时标志（Q=>tScanWatchdog） *)
-END_VAR
 
-(*--- 扫描看门狗（周期以任务组态为准，超时交 SAFETY/ERROR 处理） ---*)
-TONR(IN := TRUE, PT := T#50MS, Q => tScanWatchdog);
+(*--- 扫描看门狗（周期以任务组态为准，超时交 SAFETY/ERROR 处理；
+      H5U 定时器为内联指令 TONR(IN:=,PT:=,Q=>布尔位)，无需 TON 实例；
+      mnTScanWatchdog 即看门狗 TONR 的 Q=> 输出 BOOL（超时置位）。 ---*)
+TONR(IN := TRUE, PT := T#50MS, Q => mnTScanWatchdog);
 
 (*--- 固定扫描链 ---*)
 PRG_CmdPreclear();

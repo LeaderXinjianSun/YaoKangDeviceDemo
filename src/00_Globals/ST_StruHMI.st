@@ -329,8 +329,8 @@ END_TYPE
 
 TYPE Stru_PusherStatus :
 STRUCT
-    rCurrAngle              : REAL;     // 当前角度
-    rCurrPulse              : REAL;     // 当前脉冲
+    rCurrAngle              : REAL;     // 当前角度（HC_Counter mm 位置经余弦定理/ACOS 解算）
+    rCurrPosMm              : REAL;     // 当前推杆位置（mm，HC_Counter.Position 镜像）
     rPresetDeg              : REAL;     // 最近一次 Preset 目标角度
     rReserved               : REAL;
     iErrorCode              : INT;      // 错误码 (5001=堵转 5002=超时 5003=重试超限)
@@ -368,33 +368,21 @@ TYPE Stru_PusherLimitConfig :
 STRUCT
     rMaxDeg                 : REAL;     // 正限位 (°)
     rMinDeg                 : REAL;     // 负限位 (°)
-    rTolerance              : REAL;     // 到位容差（判断 bAtInit）
-    rInitialPosition        : REAL;     // 初始位置角度（回零目标）
-    rMinTravel              : REAL;     // 最小行程保护（脉冲，堵转检测前必须走过）
-    rHomePosition           : REAL;     // 原点位置
-    rPulsePerDeg            : REAL;     // 每度脉冲数
-    rAdOffset               : REAL;
-    rAdScale                : REAL;
-    rFitK0                  : REAL;     // AD 拟合系数 K0
-    rFitK1                  : REAL;
-    rFitK2                  : REAL;
-    rFitK3                  : REAL;
-    rAdJumpLimitDeg         : REAL;     // AD 跳变限值 (°)
-    rInertiaUp              : REAL;     // 正转惯性补偿 (脉冲)
-    rInertiaDown            : REAL;     // 反转惯性补偿 (脉冲)
-    rStallThreshold         : REAL;     // 堵转阈值 (脉冲)
-    rStallSpeedThreshold    : REAL;     // 堵转速度阈值
+    rTolerance              : REAL;     // 到位容差 (°，判断到位/bAtInit)
+    rInitialPosition        : REAL;     // 初始位置角度 (°，回零目标)
+    rMinTravel              : REAL;     // 最小行程保护 (°，堵转检测前必须走过)
+    rHomePosition           : REAL;     // 原点位置 (°)
+    rInertiaUp              : REAL;     // 角度增大方向惯性补偿 (°，提前停)
+    rInertiaDown            : REAL;     // 角度减小方向惯性补偿 (°，提前停)
+    rStallThreshold         : REAL;     // 堵转位移阈值 (°)
+    rStallSpeedThreshold    : REAL;     // 堵转速度阈值 (°/s)
     diStallTimeout          : DINT;     // 堵转判定时间 (ms)
     diTimeout               : DINT;     // 寻传感器/标定超时 (ms)
     diReverseDelay          : DINT;     // 反向缓冲延时 (ms)
     diStopCheck             : DINT;     // 停车滑行等待 (ms)
-    diAdMin                 : DINT;     // AD 有效下限
-    diAdMax                 : DINT;     // AD 有效上限
-    diAdSampleMs            : DINT;     // AD 速度估算采样周期 (ms)
     iMaxRetries             : INT;      // 最大修正次数
-    iReferenceMode          : INT;
-    iPad                    : INT;
-    bInvertPusherDirection  : BOOL;     // 输出方向取反
+    iPad                    : INT;      // 填充
+    bInvertPusherDirection  : BOOL;     // 输出方向取反（Y5/Y6 交换，对齐物理方向）
 END_STRUCT
 END_TYPE
 
@@ -603,14 +591,15 @@ END_TYPE
 
 
 (*---------------------------------------------------------------------------
-  尾板 AD 反馈（D936–D940，不挤占 TailTilt 主协议）
+  尾板位置/角度反馈（D936–D940，不挤占 TailTilt 主协议）
+  真实推杆无 AD：位置来自 HC_Counter(mm)，角度由几何解算；布局保持 5 字不变。
 ---------------------------------------------------------------------------*)
 TYPE Stru_HMI_TailAdFeedback :
 STRUCT
-    rAdAngle    : REAL;
-    diAdRaw     : DINT;
-    bAdValid    : BOOL;
-    bPad0       : BOOL;
+    rAngle      : REAL;     // 当前角度（°，几何解算镜像，D936–D937）
+    diPosMm     : DINT;     // 当前推杆位置（mm，HC_Counter.Position，D938–D939）
+    bPosValid   : BOOL;     // 位置有效（HC_Counter.Valid 且无 Error）
+    bPad0       : BOOL;     // 填充
 END_STRUCT
 END_TYPE
 
@@ -629,7 +618,7 @@ STRUCT
     SeatTwist           : Stru_HMI_Axis;           // 扭角轴
     LegAngle            : Stru_HMI_Axis;           // 转角轴
     HomingParams        : Stru_HMI_HomingParams;   // 回零参数
-    TailTiltAdFeedback  : Stru_HMI_TailAdFeedback; // 尾板 AD 反馈（D936–D940）
+    TailTiltAdFeedback  : Stru_HMI_TailAdFeedback; // 尾板位置/角度反馈（D936–D940，mm+几何角度）
 END_STRUCT
 END_TYPE
 

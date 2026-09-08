@@ -148,14 +148,20 @@
 - 调理命令字 D200–201（S1/S2/S3/停止/脚踏/复位/暂停恢复/跳过成角/Ppad）与 17 个调理状态位落地。
 - **验收（M10）**：单批调理全流程走通；暂停/恢复/停止/急停在各步正确介入；老化多批自动连跑与进度上报正确。
 
-### P11 权限 / 设备身份 / 运行统计
-- 双角色：操作员（运行调理、快速启动）/ 工程师（服务、手动运动、建零、参数维护）；角色 + 权限码 16#5A 双重防护；登录写码、退出写 0。
+### P11 权限 / 设备身份 / 运行统计 —— **已完成**
+- 双角色：操作员（运行调理、快速启动）/ 工程师（服务、手动运动、建零、参数维护）；角色 + 权限码 16#5A 双重防护；登录写码、退出写 0。（角色码按地址表对齐为 0=操作员/1=工程师；bEngineer 双重门控）
 - 快速启动（需 bSkipSelfTestAllowed）/ 强制跳过自检（需 bForceSkipSelfTestAllowed）资格位。
 - 设备身份（结构体以旧工程导出 CSV 为准）：D1000–1004 Stru_HMI_DeviceInfo 只读镜像（diDeviceNoRaw DINT + iMacWord0/1/2 三字，MAC 取 `_Ethernet.MACAddress`）；D1010–1013 Stru_HMI_DeviceIdentityWrite 维护写入（Cmd.iErrorCode + bLoad/bApply/bSuccess/bError + diDeviceNoRaw DINT，命令仅 Load/Apply）；非法/锁定报 5005/5006。
 - 运行统计 D567–577：老化循环、总循环、运行时长、当前步骤/循环、批量完成位。
 - **验收（M11）**：越权操作被拒；身份读写与报错正确；统计随运行累计。
 
-### P12 集成测试与验收
+### P12 集成测试与验收 —— **代码侧已完成（现场测试待执行）**
+- **代码侧集成收尾（已完成）**：
+  1. HmiOutput 全窗口状态位回填：错误四字镜像（iErrorCode/iErrorLevel/iErrorSubCode/iErrorSource←Sys.Error）、初始化/参数态（bInitialized/bParamInitialized/bParamError）、轴汇总（bAllAxesReferenced/bAnyAxisAtLimit 六限位或/bAbsPositionValid 三编码器故障非或）、bTailSensorAtBoot、bSensitiveRunning（成角110/治疗130）；diUpTime 改毫秒（diScanCount×10）。
+  2. 自检跳过标志链路：TaskRunner 局部 bSelfTestSkipped（态5入口清/跳分支置/步100 写 bHealthCheckSkipped）；bSelfTestDone 态5入口重入清零。
+  3. 全工程 H5U 三约定终检通过：无 TON 实例（仅内联 TONR）、TRIG.R_TRIG 全在局部 VAR、CASE 标签全字面整数、无过程调用语句、全局无 FB 实例。
+  4. 4 张变量表 + 2 张 FB 接口表与 ST 总同步复核一致。
+- **遗留现场/契约项（代码内已注释标注，不臆造）**：1006 通信超时待 HMI 心跳寄存器契约（地址表未定义）；1007 看门狗超时处置策略待现场确认；RTC 毫秒时钟替换 diScanCount 时间戳；力估算常量台架标定（GVL_CONST L184）；FB_AxisControl 编码器故障码映射（L403）/运动用时锁存（L387）；iBlockReason 4501 常量化；_Ethernet.MACAddress 系统变量名现场核对。
 - **分级测试**：
   1. 离线仿真：状态机、命令边沿/电平、参数校验、错误队列逻辑。
   2. 台架空载：伺服上电/点动/定位、推杆动作、急停链、限位/堵转/防夹。
