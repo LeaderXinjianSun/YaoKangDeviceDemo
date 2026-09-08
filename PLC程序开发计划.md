@@ -161,7 +161,8 @@
   2. 自检跳过标志链路：TaskRunner 局部 bSelfTestSkipped（态5入口清/跳分支置/步100 写 bHealthCheckSkipped）；bSelfTestDone 态5入口重入清零。
   3. 全工程 H5U 三约定终检通过：无 TON 实例（仅内联 TONR）、TRIG.R_TRIG 全在局部 VAR、CASE 标签全字面整数、无过程调用语句、全局无 FB 实例。
   4. 4 张变量表 + 2 张 FB 接口表与 ST 总同步复核一致。
-- **遗留现场/契约项（代码内已注释标注，不臆造）**：1006 通信超时待 HMI 心跳寄存器契约（地址表未定义）；1007 看门狗超时处置策略待现场确认；RTC 毫秒时钟替换 diScanCount 时间戳；力估算常量台架标定（GVL_CONST L184）；FB_AxisControl 编码器故障码映射（L403）/运动用时锁存（L387）；iBlockReason 4501 常量化；_Ethernet.MACAddress 系统变量名现场核对。
+- **遗留现场/契约项（代码内已注释标注，不臆造）**：1006 通信超时待 HMI 心跳寄存器契约（地址表未定义）；1007 看门狗超时处置策略待现场确认；力估算常量台架标定（GVL_CONST L184）；M900 编码器反馈类报警 Er.xxx 码表台架填码（FB_AxisControl §1.1 bEncFltMatch 钩子，默认断开不误保护）；日历 RTC 库 FB 现场引入替换 diMsTick（错误时间戳现为上电毫秒刻度）；_Ethernet.MACAddress 系统变量名现场核对。
+- **代码侧已闭环（本批提交）**：iBlockReason 4501–4509 常量化 + ModeManager 写入（e12805c）；编码器故障锁存 bEncFltLatch 接通 2002/绝对位置不可信链 + 离散定位运动用时完成时锁存 diMoveTimeLatch；diMsTick 毫秒刻度（MONITOR 累加 SCAN_PERIOD_MS）替换错误队列时间戳。
 - **分级测试**：
   1. 离线仿真：状态机、命令边沿/电平、参数校验、错误队列逻辑。
   2. 台架空载：伺服上电/点动/定位、推杆动作、急停链、限位/堵转/防夹。

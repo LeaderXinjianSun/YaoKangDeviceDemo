@@ -86,6 +86,6 @@ HMI.Sys.Runtime.iCurrentStep      := HMI.Condition.Status.iStep;
 HMI.Sys.Runtime.iActCycles        := HMI.Condition.Status.iCurrentCycle;
 HMI.Sys.Runtime.bBatchDone        := HMI.Condition.Status.bBatchDone;
 
-(* TODO P2: Condition.Status 17 个调理状态位由 TaskRunner/FBI_Cond 写过程值，
-   本程序仅做系统级汇总，不重复写。 *)
+(* 调理过程状态位：Condition.Status 各过程值由 TaskRunner/FB_Condition 直接写入，
+   本程序仅做系统级汇总（iCurrentStep/iActCycles/bBatchDone 见上），不重复写。 *)
 END_PROGRAM

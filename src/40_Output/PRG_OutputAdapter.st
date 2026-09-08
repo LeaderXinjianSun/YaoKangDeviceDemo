@@ -2,7 +2,7 @@
   PRG_OutputAdapter —— 层 40 输出：执行器 + MC 指令唯一调用点（扫描链第 10 环）
   ----------------------------------------------------------------------------
   实例化：fbAxisChest / fbAxisSeat / fbAxisLeg : FB_AxisControl（三轴各一）；
-          P8 增加 fbPusher : FB_PusherControl（电推杆）。
+          fbPusher : FB_PusherControl（电推杆，第 5 节调用）。
   唯一写入：
     - 三轴轴结构体命令字段（bPowerOn/bAbsPos/bJogP…，经 FB_AxisControl 内部直写）；
     - HMI.<Axis>.Status（stStatus 全量回填）；
@@ -19,7 +19,7 @@
     gFaultSource 用故障轴号（AXIS_ID_CHEST=1 / LEG=2 / SEAT=3）。
   轴下标双轨：内部数组 1=Chest冲击 / 2=Seat扭角 / 3=Leg转角；
     故障轴号 iAxisId：Chest→AXIS_ID_CHEST(1)、Seat→AXIS_ID_SEAT(3)、Leg→AXIS_ID_LEG(2)。
-  推杆：P7 仅硬急停屏蔽输出占位，完整逻辑 P8 落地。
+  推杆：第 5 节完整实现（FB 调用 + 状态回填 + Y5/Y6 输出，硬急停物理切断）。
 ==========================================================================*)
 PROGRAM PRG_OutputAdapter
 VAR

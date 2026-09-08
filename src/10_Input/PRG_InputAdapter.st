@@ -352,7 +352,7 @@ HMI.TailTilt.Cmd.bHome         := FALSE;
 HMI.TailTilt.Cmd.bManualPreset := FALSE;
 HMI.TailTilt.Cmd.bResetError   := FALSE;
 
-(* TODO P5: 六处 ConfigCmd（Condition.ParamCmd / TailTilt.ConfigCmd /
+(* 六处 ConfigCmd（Condition.ParamCmd / TailTilt.ConfigCmd /
    三轴 ConfigCmd / HomingParams.Cmd）的 bLoad/bApply/bSave/bResetDefault
    脉冲由 PARAM_SERVICE 自行 R_TRIG 锁存并回清（与参数三区操作同块，避免
    本程序再增 24 路边沿实例）；设备身份 D1010 Load/Apply 归 P11。 *)
