@@ -252,10 +252,20 @@ END_IF;
      运动/点动类电平仅在明确许可的任务态有效；离开待机/维护进入自动/自检/
      回零/急停等态时，强制清零点动与推杆使能，防止跨态残留驱动。
      INPUT_ADAPTER 每扫先写电平位，本环在其后执行，故此处清零本扫生效。
+     例外：软急停(ST_SOFT_ESTOP) 紧急回零 EMH_JOG_MAIN/CRAWL 需用三轴 Jog 电平
+           受控回初始位（TaskRunner 环7 写 HMI.<Axis>.Cmd.bJogPos/Neg，InputAdapter
+           环2 镜像 axisJogPos/Neg），故放行三轴点动；运动安全仍由 FB 内
+           bSafetyStop 门控——软急停减速电平 smBSoftStopActive 未释放（轴未停稳）
+           前 FB 不进 Jog 分支，EMH_WAIT_RELEASE 等其释放后才驱动。
+           硬急停(ST_HARD_ESTOP) 不放行（断使能，点动无意义）。
+           推杆点动任何急停态均清零（紧急回零不用推杆）。
   ==========================================================================*)
-IF NOT ((iState = ST_STANDBY) OR (iState = ST_SERVICE)) THEN
+IF NOT ((iState = ST_STANDBY) OR (iState = ST_SERVICE) OR (iState = ST_SOFT_ESTOP)) THEN
     axisJogPos[1] := FALSE;  axisJogPos[2] := FALSE;  axisJogPos[3] := FALSE;
     axisJogNeg[1] := FALSE;  axisJogNeg[2] := FALSE;  axisJogNeg[3] := FALSE;
+END_IF;
+(* 推杆点动：非待机/维护一律清零（紧急回零不动作推杆） *)
+IF NOT ((iState = ST_STANDBY) OR (iState = ST_SERVICE)) THEN
     jogPushUp   := FALSE;
     jogPushDown := FALSE;
 END_IF;
