@@ -170,7 +170,7 @@ ELSE
                 iState := ST_SELFTEST;       (* 5 *)
             (*--- 自动流程：直接启动或快速启动（快速启动需资格位） ---*)
             ELSIF (trigAutoStart OR trigStart)
-              AND (bSafeToStart OR (trigQuickStart AND HMI.Sys.Status.bSkipSelfTestAllowed)) THEN
+              AND (HMI.Sys.Status.bSafeToStart OR (trigQuickStart AND HMI.Sys.Status.bSkipSelfTestAllowed)) THEN
                 IF iWorkMode = 0 THEN
                     iWorkMode := HMI.Sys.Cmd.iWorkMode;   (* 锁存工作模式快照 *)
                 END_IF;

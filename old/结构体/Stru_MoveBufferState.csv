@@ -1,0 +1,7 @@
+序号,成员变量名,数据类型,注释,
+1,iIndex,INT,MC_MoveBuffer 当前段索引 (0-15),
+2,iErrorId,INT,MC_MoveBuffer 原始错误码,
+3,bDone,BOOL,MC_MoveBuffer 完成,
+4,bBusy,BOOL,MC_MoveBuffer 执行中,
+5,bCommandAborted,BOOL, MC_MoveBuffer 被中止,
+6,bError,BOOL,MC_MoveBuffer 报错,
