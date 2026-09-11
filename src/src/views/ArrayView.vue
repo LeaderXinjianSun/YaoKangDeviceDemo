@@ -34,17 +34,12 @@ const busy = ref(false);
 
 const modeOptions = MODE_OPTIONS;
 
-/** 单元格是否超限（非有限数 / 速度等 <0 或 >上限 / 间隔为负） */
+/** 单元格是否非法（仅非有效数字；速度/加减速不在上位机做限值） */
 function isInvalid(row: number, col: number): boolean {
-  const c = ARRAY_COLUMNS[col];
-  const v = rows.value[row][col];
-  if (!Number.isFinite(v)) return true;
-  if (c.max !== null && (v < 0 || v > c.max)) return true;
-  if (c.dint && v < 0) return true;
-  return false;
+  return !Number.isFinite(rows.value[row][col]);
 }
 
-/** 当前可见行中是否存在超限单元格（存在则禁止下发） */
+/** 当前可见行中是否存在非法单元格（非有效数字，存在则禁止下发） */
 const hasInvalid = computed(() => {
   for (let r = 0; r < depth.value; r++) {
     for (let c = 0; c < ARRAY_COLUMNS.length; c++) {
@@ -97,7 +92,7 @@ async function download(): Promise<void> {
 
 async function upload(): Promise<void> {
   if (hasInvalid.value) {
-    message.error("存在超限单元格（已标红），请先修正再下发");
+    message.error("存在非法单元格（已标红），请先修正再下发");
     return;
   }
   busy.value = true;
@@ -213,8 +208,7 @@ const tableData = computed(() =>
 
       <p class="tip">
         进入本页不自动读取 PLC；仅点击"从 PLC 上读/整组下发"时产生一次性报文，
-        离开页面无任何后台读写。超限单元格标红并禁止下发
-        （速度≤500/148.76，加减速≤2500/743.8，间隔为非负整数）。
+        离开页面无任何后台读写。速度/加减速不做上位机限值，由 PLC 侧工艺约束保证。
       </p>
 
       <n-data-table
