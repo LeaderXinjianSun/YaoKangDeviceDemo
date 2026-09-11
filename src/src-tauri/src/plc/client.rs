@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, Notify};
 use tokio::time::{interval, timeout, MissedTickBehavior};
@@ -20,7 +20,8 @@ use tokio_modbus::prelude::*;
 use tokio_modbus::Slave;
 
 use super::address::PlcMap;
-use super::codec::{decode_real, encode_real, ByteOrder};
+use super::arrays;
+use super::codec::{decode_dint, decode_real, encode_dint, encode_real, ByteOrder};
 
 /// 事件名
 const EV_STATUS: &str = "plc::status";
@@ -376,6 +377,134 @@ impl Plc {
                 Err(format!("读线圈超时（{}ms）", cfg.io_timeout_ms))
             }
         }
+    }
+
+    /// 批量写保持寄存器（FC16，绝对 Modbus 地址），P4 数组下发用
+    async fn write_regs_raw(&self, addr: u16, regs: &[u16]) -> Result<(), String> {
+        // FC16 单帧最多写 123 个保持寄存器（PDU 253 字节 - 6 字节头），超出自动分片
+        const FC16_MAX: usize = 123;
+        let cfg = self.config_clone().await;
+        let io = Duration::from_millis(cfg.io_timeout_ms);
+        for (i, chunk) in regs.chunks(FC16_MAX).enumerate() {
+            let chunk_addr = addr + (i * FC16_MAX) as u16;
+            let mut guard = self.inner.conn.lock().await;
+            let Some(ctx) = guard.as_mut() else {
+                return Err("PLC 未连接".into());
+            };
+            match timeout(io, ctx.write_multiple_registers(chunk_addr, chunk)).await {
+                Ok(Ok(Ok(()))) => {}
+                Ok(Ok(Err(e))) => return Err(format!("Modbus 写寄存器失败：{e:?}")),
+                Ok(Err(e)) => {
+                    drop(guard);
+                    self.mark_downline().await;
+                    return Err(format!("写寄存器传输错误：{e}"));
+                }
+                Err(_) => {
+                    drop(guard);
+                    self.mark_downline().await;
+                    return Err(format!("写寄存器超时（{}ms）", cfg.io_timeout_ms));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// 批量读保持寄存器（FC03，绝对 Modbus 地址），P4 数组上读用
+    async fn read_regs_raw(&self, addr: u16, cnt: u16) -> Result<Vec<u16>, String> {
+        // FC03 单帧最多读 125 个保持寄存器，超出自动分片后按地址顺序拼接
+        const FC03_MAX: u16 = 125;
+        let cfg = self.config_clone().await;
+        let io = Duration::from_millis(cfg.io_timeout_ms);
+        let mut out = Vec::with_capacity(cnt as usize);
+        let mut cur_addr = addr;
+        let mut remain = cnt;
+        while remain > 0 {
+            let n = remain.min(FC03_MAX);
+            let mut guard = self.inner.conn.lock().await;
+            let Some(ctx) = guard.as_mut() else {
+                return Err("PLC 未连接".into());
+            };
+            match timeout(io, ctx.read_holding_registers(cur_addr, n)).await {
+                Ok(Ok(Ok(v))) if v.len() >= n as usize => {
+                    out.extend_from_slice(&v[..n as usize]);
+                }
+                Ok(Ok(Ok(v))) => {
+                    return Err(format!("读寄存器返回长度不足：{}<{n}", v.len()))
+                }
+                Ok(Ok(Err(e))) => return Err(format!("Modbus 读寄存器失败：{e:?}")),
+                Ok(Err(e)) => {
+                    drop(guard);
+                    self.mark_downline().await;
+                    return Err(format!("读寄存器传输错误：{e}"));
+                }
+                Err(_) => {
+                    drop(guard);
+                    self.mark_downline().await;
+                    return Err(format!("读寄存器超时（{}ms）", cfg.io_timeout_ms));
+                }
+            }
+            cur_addr += n;
+            remain -= n;
+        }
+        Ok(out)
+    }
+
+    /// P4 运动数组下发：按段 FC16 批量写 depth 步数据，最后写 D1100 深度、D1101 模式
+    async fn array_upload(
+        &self,
+        depth: u16,
+        mode: u16,
+        rows: &[Vec<f64>],
+    ) -> Result<(), String> {
+        arrays::validate(depth, mode, rows)?;
+        let cfg = self.config_clone().await;
+        let n = depth as usize;
+        // 先写全部数据段
+        for (col, seg) in arrays::SEGMENTS.iter().enumerate() {
+            let mut regs = Vec::with_capacity(n * 2);
+            for row in rows {
+                let pair = match seg.kind {
+                    arrays::SegKind::Real => encode_real(row[col] as f32, cfg.byte_order),
+                    arrays::SegKind::Dint => {
+                        encode_dint(row[col].round() as i32, cfg.byte_order)
+                    }
+                };
+                regs.extend_from_slice(&pair);
+            }
+            self.write_regs_raw(cfg.map.d_reg(seg.start), &regs).await?;
+        }
+        // 数据写完最后再给深度与模式，PLC 以此识别一组完整下发
+        let d1100 = cfg.map.d_reg(arrays::DEPTH_D);
+        self.write_regs_raw(d1100, &[depth, mode]).await?;
+        Ok(())
+    }
+
+    /// P4 运动数组上读：读 D1100/D1101 控制量，再按段读回 13 段 × depth 步
+    async fn array_download(&self) -> Result<ArrayDump, String> {
+        let cfg = self.config_clone().await;
+        let head = self
+            .read_regs_raw(cfg.map.d_reg(arrays::DEPTH_D), 2)
+            .await?;
+        let depth = head[0];
+        let mode = head[1];
+        if !(1..=arrays::MAX_DEPTH as u16).contains(&depth) {
+            return Err(format!("PLC 数组深度 D{}={depth} 超出 1~{}，请先下发", arrays::DEPTH_D, arrays::MAX_DEPTH));
+        }
+        let n = depth as usize;
+        let mut rows = vec![vec![0.0f64; arrays::SEGMENTS.len()]; n];
+        for (col, seg) in arrays::SEGMENTS.iter().enumerate() {
+            let regs = self
+                .read_regs_raw(cfg.map.d_reg(seg.start), (n * 2) as u16)
+                .await?;
+            for step in 0..n {
+                let pair = [regs[step * 2], regs[step * 2 + 1]];
+                rows[step][col] = match seg.kind {
+                    arrays::SegKind::Real => decode_real(pair, cfg.byte_order) as f64,
+                    arrays::SegKind::Dint => decode_dint(pair, cfg.byte_order) as f64,
+                };
+            }
+        }
+        Ok(ArrayDump { depth, mode, rows })
     }
 
     /// 点动脉冲线圈"按 1 松 0"（参数为 M 软元件号）。
@@ -829,4 +958,40 @@ pub(crate) async fn coil_clear_all(
 ) -> Result<(), String> {
     state.plc.release_all_held().await;
     Ok(())
+}
+
+// ---------- P4：运动数组 ----------
+
+/// 数组上读结果：D1100 深度、D1101 模式与 13 列 × depth 步行数据
+#[derive(Debug, Serialize)]
+pub(crate) struct ArrayDump {
+    depth: u16,
+    mode: u16,
+    /// rows[步][列]，列顺序与 arrays::SEGMENTS 一致
+    rows: Vec<Vec<f64>>,
+}
+
+/// 数组下发入参（与上读结果同构）
+#[derive(Debug, Deserialize)]
+pub(crate) struct ArrayUploadReq {
+    depth: u16,
+    mode: u16,
+    rows: Vec<Vec<f64>>,
+}
+
+/// 运动数组下发：按段 FC16 批量写，最后写深度/模式；写前做范围校验，超限直接拒绝
+#[tauri::command]
+pub(crate) async fn array_upload(
+    state: tauri::State<'_, crate::AppState>,
+    req: ArrayUploadReq,
+) -> Result<(), String> {
+    state.plc.array_upload(req.depth, req.mode, &req.rows).await
+}
+
+/// 运动数组上读（点一次读一次，不轮询、不订阅）
+#[tauri::command]
+pub(crate) async fn array_download(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<ArrayDump, String> {
+    state.plc.array_download().await
 }

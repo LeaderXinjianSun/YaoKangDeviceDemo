@@ -91,3 +91,25 @@ export function writeReal(d: number, v: number): Promise<void> {
 export function coilClearAll(): Promise<void> {
   return invoke("coil_clear_all");
 }
+
+// ---------- P4：运动数组 ----------
+
+/** 数组上读结果：深度/模式 + rows[步][列]，列顺序见 config/arrayColumns.ts */
+export interface ArrayDump {
+  depth: number;
+  mode: number;
+  rows: number[][];
+}
+
+/**
+ * 运动数组下发：按段 FC16 批量写 D2000 起 13 段数据，最后写 D1100/D1101。
+ * 后端做范围校验，超限返回错误且不产生任何写入
+ */
+export function arrayUpload(payload: ArrayDump): Promise<void> {
+  return invoke("array_upload", { req: payload });
+}
+
+/** 运动数组上读（点一次读一次，不轮询、不订阅） */
+export function arrayDownload(): Promise<ArrayDump> {
+  return invoke("array_download");
+}

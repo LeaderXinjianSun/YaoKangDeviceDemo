@@ -54,6 +54,8 @@ pub fn run() {
             plc::client::coil_toggle,
             plc::client::write_real,
             plc::client::coil_clear_all,
+            plc::client::array_upload,
+            plc::client::array_download,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

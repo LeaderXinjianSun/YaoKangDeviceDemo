@@ -46,3 +46,28 @@ pub fn encode_real(v: f32, order: ByteOrder) -> [u16; 2] {
         ByteOrder::Dcba => [(d << 8) | c, (b << 8) | a],
     }
 }
+
+/// 两个保持寄存器 -> i32（DINT，运动间隔），字序含义与 REAL 一致
+pub fn decode_dint(regs: [u16; 2], order: ByteOrder) -> i32 {
+    let [hi, lo] = regs;
+    let (a, b, c, d) = (hi >> 8, hi & 0xff, lo >> 8, lo & 0xff);
+    let bytes: [u8; 4] = match order {
+        ByteOrder::Abcd => [a as u8, b as u8, c as u8, d as u8],
+        ByteOrder::Cdab => [c as u8, d as u8, a as u8, b as u8],
+        ByteOrder::Badc => [b as u8, a as u8, d as u8, c as u8],
+        ByteOrder::Dcba => [d as u8, c as u8, b as u8, a as u8],
+    };
+    i32::from_be_bytes(bytes)
+}
+
+/// i32 -> 两个保持寄存器（decode_dint 的逆变换）
+pub fn encode_dint(v: i32, order: ByteOrder) -> [u16; 2] {
+    let [a, b, c, d] = v.to_be_bytes();
+    let (a, b, c, d) = (a as u16, b as u16, c as u16, d as u16);
+    match order {
+        ByteOrder::Abcd => [(a << 8) | b, (c << 8) | d],
+        ByteOrder::Cdab => [(c << 8) | d, (a << 8) | b],
+        ByteOrder::Badc => [(b << 8) | a, (d << 8) | c],
+        ByteOrder::Dcba => [(d << 8) | c, (b << 8) | a],
+    }
+}
