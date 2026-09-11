@@ -1,0 +1,12 @@
+# 国内 crates 镜像（只影响本项目）。如在公司外网可正常访问 crates.io，可删除此文件。
+[source.crates-io]
+replace-with = "rsproxy"
+
+[source.rsproxy]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[registries.rsproxy]
+index = "sparse+https://rsproxy.cn/index/"
+
+[net]
+git-fetch-with-cli = true

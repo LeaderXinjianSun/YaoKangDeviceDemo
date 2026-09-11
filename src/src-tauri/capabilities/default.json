@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "默认权限：P0 只用自定义命令，core 事件/窗口权限保持最小集",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
