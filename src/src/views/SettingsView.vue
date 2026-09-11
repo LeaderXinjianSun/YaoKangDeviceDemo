@@ -10,20 +10,24 @@ import {
   NSelect,
   NSpace,
   NSwitch,
+  NTag,
   useMessage,
 } from "naive-ui";
 import { configGetAll, configSet, ping } from "../api/ipc";
+import { usePlcStore } from "../stores/plc";
 
 const message = useMessage();
+const plc = usePlcStore();
 const saving = ref(false);
 const loading = ref(true);
+const connecting = ref(false);
 
 // 仅声明 P0 需要配置/播种的连接相关参数；其余时序参数 P1 用到时再加
 const form = reactive({
   plc_ip: "192.168.1.88",
   plc_port: 502,
   modbus_unit_id: 1,
-  real_byte_order: "ABCD",
+  real_byte_order: "CDAB",
   read_interval_ms: 500,
   heartbeat_ms: 100,
   watchdog_read_ms: 1000,
@@ -88,6 +92,38 @@ async function testIpc() {
     message.error(`IPC 调用失败：${e}`);
   }
 }
+
+// P1：手动连接/断开（连接前先保存参数，后端再重读 SQLite）
+async function connect() {
+  connecting.value = true;
+  try {
+    await save();
+    await plc.connect();
+    message.success("已发起连接");
+  } catch (e) {
+    message.error(`连接失败：${e}`);
+  } finally {
+    connecting.value = false;
+  }
+}
+
+async function disconnect() {
+  try {
+    await plc.disconnect();
+  } catch (e) {
+    message.error(`断开失败：${e}`);
+  }
+}
+
+// 字节序调试频繁，选择后立即落库；telemetry 任务在重进调试页时按新值重建
+async function onByteOrderChange(v: string) {
+  try {
+    await configSet("real_byte_order", v);
+    message.success("字节序已保存，重新进入调试页后生效");
+  } catch (e) {
+    message.error(`字节序保存失败：${e}`);
+  }
+}
 </script>
 
 <template>
@@ -110,12 +146,33 @@ async function testIpc() {
             v-model:value="form.real_byte_order"
             :options="byteOrderOptions"
             style="max-width: 220px"
+            @update:value="onByteOrderChange"
           />
         </n-form-item>
         <n-form-item label="开机自动连接">
           <n-switch v-model:value="form.auto_connect" />
         </n-form-item>
       </n-form>
+      <n-space align="center" style="margin-top: 8px">
+        <n-tag :bordered="false" :type="plc.online ? 'success' : plc.status === 'offline' ? 'error' : 'warning'">
+          {{ plc.statusText }}
+        </n-tag>
+        <n-button
+          type="primary"
+          :loading="connecting || plc.status === 'connecting'"
+          :disabled="plc.online || plc.status === 'reconnecting'"
+          @click="connect"
+        >
+          连接
+        </n-button>
+        <n-button
+          :disabled="plc.status === 'offline'"
+          @click="disconnect"
+        >
+          断开
+        </n-button>
+        <span class="conn-tip">断线自动重连（1→2→5→10s），断开后停止重连</span>
+      </n-space>
     </n-card>
 
     <n-card title="通信时序（毫秒）" class="card" :bordered="false">
@@ -167,5 +224,9 @@ h2 {
 }
 .card {
   margin-bottom: 0;
+}
+.conn-tip {
+  font-size: 12px;
+  opacity: 0.45;
 }
 </style>

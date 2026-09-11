@@ -11,7 +11,7 @@ const DEFAULTS: &[(&str, &str)] = &[
     ("plc_ip", "192.168.1.88"),
     ("plc_port", "502"),
     ("modbus_unit_id", "1"),
-    ("real_byte_order", "ABCD"),
+    ("real_byte_order", "CDAB"),
     ("read_interval_ms", "500"),
     ("heartbeat_reg", "210"),
     ("heartbeat_ms", "100"),
@@ -21,7 +21,28 @@ const DEFAULTS: &[(&str, &str)] = &[
     ("reconnect_backoff_ms", "1000,2000,5000,10000"),
     ("conn_timeout_ms", "3000"),
     ("io_timeout_ms", "1000"),
+    // 信捷 D/M 软元件的 Modbus 基址（按现场调整，默认 0）
+    ("d_base", "0"),
+    ("m_base", "0"),
 ];
+
+/// 读取全部参数（供后端异步任务在 spawn_blocking 中使用）
+pub fn config_map(conn: &Connection) -> Result<HashMap<String, String>, String> {
+    let mut stmt = conn
+        .prepare("SELECT key, value FROM app_config")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut map = HashMap::new();
+    for row in rows {
+        let (k, v) = row.map_err(|e| e.to_string())?;
+        map.insert(k, v);
+    }
+    Ok(map)
+}
 
 /// 打开（必要时创建）应用数据目录下的 ldr_plc.db
 pub fn open_app_db<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<Connection, String> {

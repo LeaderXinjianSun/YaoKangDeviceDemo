@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from "vue";
+import { computed, h, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   darkTheme,
@@ -13,6 +13,7 @@ import {
   NMessageProvider,
   type MenuOption,
 } from "naive-ui";
+import { usePlcStore } from "./stores/plc";
 
 const route = useRoute();
 const router = useRouter();
@@ -61,8 +62,11 @@ const menuOptions: MenuOption[] = [
   },
 ];
 
-// P0：未连接 PLC，固定红灯；P1 起由 plc::status 事件驱动
-const plcOnline = ref(false);
+// P1：状态灯由后端 plc::status 事件驱动（offline 红 / connecting·reconnecting 黄 / online 绿）
+const plc = usePlcStore();
+onMounted(() => {
+  plc.init();
+});
 </script>
 
 <template>
@@ -91,10 +95,8 @@ const plcOnline = ref(false);
           </n-layout-content>
           <n-layout-footer bordered class="status-bar">
             <span>PLC</span>
-            <span class="lamp" :class="plcOnline ? 'on' : 'off'"></span>
-            <span class="status-text">{{
-              plcOnline ? "已连接" : "未连接"
-            }}</span>
+            <span class="lamp" :class="plc.status"></span>
+            <span class="status-text">{{ plc.statusText }}</span>
           </n-layout-footer>
         </n-layout>
       </n-layout>
@@ -126,14 +128,20 @@ const plcOnline = ref(false);
   display: inline-block;
 }
 
-.lamp.on {
+.lamp.online {
   background: #18a058;
   box-shadow: 0 0 6px #18a058;
 }
 
-.lamp.off {
+.lamp.offline {
   background: #d03050;
   box-shadow: 0 0 6px #d03050;
+}
+
+.lamp.connecting,
+.lamp.reconnecting {
+  background: #f0a020;
+  box-shadow: 0 0 6px #f0a020;
 }
 
 .status-text {
