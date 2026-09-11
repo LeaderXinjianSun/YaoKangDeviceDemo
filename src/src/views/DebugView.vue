@@ -5,16 +5,7 @@ import type { MenuOption } from "naive-ui";
 import { usePlcStore } from "../stores/plc";
 import { coilClearAll, coilPulse } from "../api/plc";
 import AxisPanel from "../components/AxisPanel.vue";
-import AxisPad from "../components/AxisPad.vue";
-import {
-  AXES,
-  M_DEBUG,
-  M_DEBUG_STOP,
-  M_EXIT_DEBUG,
-  M_RESET,
-  M_RUN,
-  M_STOP,
-} from "../config/axes";
+import { AXES, M_DEBUG_STOP, M_STOP } from "../config/axes";
 
 const plc = usePlcStore();
 const message = useMessage();
@@ -87,32 +78,6 @@ onUnmounted(() => {
       <n-tag :bordered="false" :type="plc.online ? 'success' : 'warning'">
         {{ plc.statusText }}
       </n-tag>
-      <n-space class="mode" :size="8">
-        <AxisPad
-          :m="M_RUN"
-          label="运行"
-          size="compact"
-          :disabled="!plc.online"
-        />
-        <AxisPad
-          :m="M_DEBUG"
-          label="调试"
-          size="compact"
-          :disabled="!plc.online"
-        />
-        <AxisPad
-          :m="M_EXIT_DEBUG"
-          label="退出调试"
-          size="compact"
-          :disabled="!plc.online"
-        />
-        <AxisPad
-          :m="M_RESET"
-          label="复位"
-          size="compact"
-          :disabled="!plc.online"
-        />
-      </n-space>
     </div>
 
     <n-card title="四轴实时坐标（只读）" class="card" :bordered="false">
@@ -170,7 +135,7 @@ onUnmounted(() => {
         </n-space>
 
         <div class="tip">
-          Jog± 与顶部运行/调试/退出调试/复位均为按住为 1、松开为 0，不设超时自动复位
+          Jog± 与全局工具栏的运行/调试/退出调试/复位均为按住为 1、松开为 0，不设超时自动复位
           （拖出按钮、切页、窗口失焦或断线均回 0，断线恢复后后端补写 0）；Inc±/Go 与
           停止按钮为上升沿短脉冲（宽度可配，默认 200ms）；参数在失焦或点"应用"时写入
           对应 D 地址。
@@ -196,9 +161,6 @@ h2 {
   margin: 0;
   font-weight: 500;
   opacity: 0.85;
-}
-.mode {
-  margin-left: auto;
 }
 .card {
   max-width: 900px;

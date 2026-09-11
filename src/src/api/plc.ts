@@ -17,6 +17,8 @@ export interface PlcTelemetry {
 
 export const PLC_STATUS_EVENT = "plc::status";
 export const PLC_TELEMETRY_EVENT = "plc::telemetry";
+/** D220 全局状态机（INT16：-1 急停/0 复位/1 调试/2 运行） */
+export const PLC_GL_STEP_EVENT = "plc::gl_step";
 
 /** 手动连接/重连（后端先重读 SQLite 参数） */
 export function plcConnect(): Promise<void> {

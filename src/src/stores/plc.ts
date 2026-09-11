@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { computed, ref } from "vue";
 import {
+  PLC_GL_STEP_EVENT,
   PLC_STATUS_EVENT,
   PLC_TELEMETRY_EVENT,
   plcConnect,
@@ -14,6 +15,8 @@ import {
 } from "../api/plc";
 
 const TELEMETRY_GROUP = "telemetry";
+/** 全局状态机组（顶栏常驻，App 挂载即订阅、不退订） */
+const GL_STEP_GROUP = "glstep";
 
 /**
  * PLC 全局状态：
@@ -23,6 +26,8 @@ const TELEMETRY_GROUP = "telemetry";
 export const usePlcStore = defineStore("plc", () => {
   const status = ref<PlcStatus>("offline");
   const telemetry = ref<PlcTelemetry | null>(null);
+  /** D220 全局状态机：-1 急停/0 复位/1 调试/2 运行；null=尚未读到 */
+  const glStep = ref<number | null>(null);
 
   const online = computed(() => status.value === "online");
   const statusText = computed(() => {
@@ -40,6 +45,7 @@ export const usePlcStore = defineStore("plc", () => {
 
   let unlistenStatus: UnlistenFn | null = null;
   let unlistenTelemetry: UnlistenFn | null = null;
+  let unlistenGlStep: UnlistenFn | null = null;
   let telemetryCount = 0;
 
   /** 订阅状态事件并同步一次当前状态（App.vue onMounted 调用一次） */
@@ -52,6 +58,17 @@ export const usePlcStore = defineStore("plc", () => {
         status.value = await plcStatus();
       } catch {
         // 后端不可用时保持 offline
+      }
+    }
+    // 顶栏常驻：订阅 D220 全局状态机（引用计数恒为 1，不退订）
+    if (!unlistenGlStep) {
+      unlistenGlStep = await listen<number>(PLC_GL_STEP_EVENT, (e) => {
+        glStep.value = e.payload;
+      });
+      try {
+        await plcSubscribe(GL_STEP_GROUP);
+      } catch {
+        // 后端不可用时忽略，重连后由重订阅覆盖（首次订阅失败不影响其余功能）
       }
     }
   }
@@ -93,6 +110,7 @@ export const usePlcStore = defineStore("plc", () => {
     online,
     statusText,
     telemetry,
+    glStep,
     init,
     connect,
     disconnect,

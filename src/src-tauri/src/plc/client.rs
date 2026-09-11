@@ -26,10 +26,15 @@ use super::codec::{decode_dint, decode_real, encode_dint, encode_real, ByteOrder
 /// 事件名
 const EV_STATUS: &str = "plc::status";
 const EV_TELEMETRY: &str = "plc::telemetry";
+/// 全局状态机 D220（HMI_GL_STEP，INT16）周期事件
+const EV_GL_STEP: &str = "plc::gl_step";
 
 /// telemetry 组：D200~D207 四个 REAL（胸背/臀腿/臀盘/电推杆）
 const TELEMETRY_D: u16 = 200;
 const TELEMETRY_CNT: u16 = 8;
+
+/// glstep 组：D220 全局状态机单个 INT16（-1 急停/0 复位/1 调试/2 运行）
+const GL_STEP_D: u16 = 220;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StatusKind {
@@ -233,7 +238,7 @@ impl Plc {
     }
 
     async fn subscribe(&self, group: &str) -> Result<(), String> {
-        if group != "telemetry" {
+        if group != "telemetry" && group != "glstep" {
             return Err(format!("未知订阅组：{group}"));
         }
         let mut subs = self.inner.subs.lock().await;
@@ -250,7 +255,14 @@ impl Plc {
             },
         );
         let plc = self.clone();
-        tauri::async_runtime::spawn(async move { telemetry_task(plc, stop).await });
+        let g = group.to_string();
+        tauri::async_runtime::spawn(async move {
+            if g == "glstep" {
+                gl_step_task(plc, stop).await;
+            } else {
+                telemetry_task(plc, stop).await;
+            }
+        });
         Ok(())
     }
 
@@ -816,6 +828,41 @@ async fn telemetry_task(plc: Plc, stop: Arc<Notify>) {
                     pushrod: real(6),
                 };
                 let _ = plc.app.emit(EV_TELEMETRY, t);
+            }
+            // Modbus 异常/异常长度：忽略本拍
+            Ok(Ok(Ok(_))) | Ok(Ok(Err(_))) => {}
+            // 超时/IO 错误：判离线由监督器重连，本任务继续存活待恢复
+            _ => plc.mark_downline().await,
+        }
+    }
+}
+
+/// glstep 订阅任务：周期读 D220 全局状态机（INT16）并发 plc::gl_step 事件；
+/// 离线时空转，重连后自动恢复，退订时由 stop 信号终止
+async fn gl_step_task(plc: Plc, stop: Arc<Notify>) {
+    let cfg = plc.config_clone().await;
+    let addr = cfg.map.d_reg(GL_STEP_D);
+    let io = Duration::from_millis(cfg.io_timeout_ms);
+
+    let mut ticker = interval(Duration::from_millis(cfg.read_interval_ms));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            _ = stop.notified() => return,
+        }
+
+        let mut guard = plc.inner.conn.lock().await;
+        let Some(ctx) = guard.as_mut() else { continue };
+        let result = timeout(io, ctx.read_holding_registers(addr, 1)).await;
+        drop(guard);
+
+        match result {
+            Ok(Ok(Ok(regs))) if !regs.is_empty() => {
+                // D220 为有符号 INT16：-1 急停 / 0 复位 / 1 调试 / 2 运行
+                let step = regs[0] as i16;
+                let _ = plc.app.emit(EV_GL_STEP, step);
             }
             // Modbus 异常/异常长度：忽略本拍
             Ok(Ok(Ok(_))) | Ok(Ok(Err(_))) => {}

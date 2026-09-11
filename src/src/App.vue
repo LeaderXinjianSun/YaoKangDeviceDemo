@@ -8,12 +8,16 @@ import {
   NLayout,
   NLayoutContent,
   NLayoutFooter,
+  NLayoutHeader,
   NLayoutSider,
   NMenu,
   NMessageProvider,
+  NTag,
   type MenuOption,
 } from "naive-ui";
+import AxisPad from "./components/AxisPad.vue";
 import { usePlcStore } from "./stores/plc";
+import { M_DEBUG, M_EXIT_DEBUG, M_RESET, M_RUN } from "./config/axes";
 
 const route = useRoute();
 const router = useRouter();
@@ -64,6 +68,37 @@ const menuOptions: MenuOption[] = [
 
 // P1：状态灯由后端 plc::status 事件驱动（offline 红 / connecting·reconnecting 黄 / online 绿）
 const plc = usePlcStore();
+
+// D220 全局状态机：-1 急停 / 0 复位 / 1 调试 / 2 运行
+const glStepText = computed(() => {
+  switch (plc.glStep) {
+    case -1:
+      return "急停";
+    case 0:
+      return "复位";
+    case 1:
+      return "调试";
+    case 2:
+      return "运行";
+    default:
+      return "--";
+  }
+});
+const glStepType = computed<"error" | "default" | "warning" | "success">(() => {
+  switch (plc.glStep) {
+    case -1:
+      return "error";
+    case 0:
+      return "default";
+    case 1:
+      return "warning";
+    case 2:
+      return "success";
+    default:
+      return "default";
+  }
+});
+
 onMounted(() => {
   plc.init();
 });
@@ -88,8 +123,44 @@ onMounted(() => {
         </n-layout-sider>
 
         <n-layout>
+          <n-layout-header bordered class="app-header">
+            <n-tag
+              :bordered="false"
+              :type="glStepType"
+              size="large"
+              class="gl-step"
+            >
+              状态机：{{ glStepText }}
+            </n-tag>
+            <div class="mode-pads">
+              <AxisPad
+                :m="M_RUN"
+                label="运行"
+                size="compact"
+                :disabled="!plc.online"
+              />
+              <AxisPad
+                :m="M_DEBUG"
+                label="调试"
+                size="compact"
+                :disabled="!plc.online"
+              />
+              <AxisPad
+                :m="M_EXIT_DEBUG"
+                label="退出调试"
+                size="compact"
+                :disabled="!plc.online"
+              />
+              <AxisPad
+                :m="M_RESET"
+                label="复位"
+                size="compact"
+                :disabled="!plc.online"
+              />
+            </div>
+          </n-layout-header>
           <n-layout-content
-            content-style="padding: 16px; height: calc(100vh - 32px);"
+            content-style="padding: 16px; height: calc(100vh - 80px);"
           >
             <router-view />
           </n-layout-content>
@@ -105,6 +176,26 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.app-header {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 16px;
+}
+
+.mode-pads {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 20px;
+}
+
+.gl-step {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
 .app-title {
   font-size: 15px;
   font-weight: 600;
