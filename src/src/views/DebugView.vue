@@ -1,10 +1,34 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from "vue";
-import { NCard, NEmpty, NTag } from "naive-ui";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { NCard, NEmpty, NMenu, NSpace, NTag, NButton, useMessage } from "naive-ui";
+import type { MenuOption } from "naive-ui";
 import { usePlcStore } from "../stores/plc";
+import { coilClearAll, coilPulse } from "../api/plc";
+import AxisPanel from "../components/AxisPanel.vue";
+import AxisPad from "../components/AxisPad.vue";
+import {
+  AXES,
+  M_DEBUG,
+  M_DEBUG_STOP,
+  M_EXIT_DEBUG,
+  M_RESET,
+  M_RUN,
+  M_STOP,
+} from "../config/axes";
 
 const plc = usePlcStore();
+const message = useMessage();
 
+// ---- 轴切换 ----
+const currentKey = ref(AXES[0].key);
+const currentAxis = computed(
+  () => AXES.find((a) => a.key === currentKey.value) ?? AXES[0]
+);
+const menuOptions = computed<MenuOption[]>(() =>
+  AXES.map((a) => ({ label: a.name, key: a.key }))
+);
+
+// ---- 四轴实时坐标 ----
 const axes = computed(() => {
   const t = plc.telemetry;
   return [
@@ -19,13 +43,40 @@ function fmt(v: number | null): string {
   return v === null ? "--" : v.toFixed(3);
 }
 
+/** 停止类安全按钮：先清掉所有置位点动线圈，再向停止线圈发一个短脉冲 */
+async function stop(m: number, name: string): Promise<void> {
+  try {
+    await coilClearAll();
+    await coilPulse(m);
+  } catch (e) {
+    message.error(`${name}失败：${e}`);
+  }
+}
+
+/** 切页/窗口失焦：清掉所有当前置位的点动线圈 */
+async function clearHeld(): Promise<void> {
+  try {
+    await coilClearAll();
+  } catch {
+    // 后端离线时会在重连后补写 OFF，忽略
+  }
+}
+
+function onWindowBlur(): void {
+  void clearHeld();
+}
+
 onMounted(() => {
   // 进入调试页才周期读 D200~D207；离开即停（后端引用计数）
-  plc.startTelemetry();
+  void plc.startTelemetry();
+  window.addEventListener("blur", onWindowBlur);
 });
 
 onUnmounted(() => {
-  plc.stopTelemetry();
+  window.removeEventListener("blur", onWindowBlur);
+  void plc.stopTelemetry();
+  // 切页：主动清掉所有置位点动线圈
+  void clearHeld();
 });
 </script>
 
@@ -36,6 +87,32 @@ onUnmounted(() => {
       <n-tag :bordered="false" :type="plc.online ? 'success' : 'warning'">
         {{ plc.statusText }}
       </n-tag>
+      <n-space class="mode" :size="8">
+        <AxisPad
+          :m="M_RUN"
+          label="运行"
+          size="compact"
+          :disabled="!plc.online"
+        />
+        <AxisPad
+          :m="M_DEBUG"
+          label="调试"
+          size="compact"
+          :disabled="!plc.online"
+        />
+        <AxisPad
+          :m="M_EXIT_DEBUG"
+          label="退出调试"
+          size="compact"
+          :disabled="!plc.online"
+        />
+        <AxisPad
+          :m="M_RESET"
+          label="复位"
+          size="compact"
+          :disabled="!plc.online"
+        />
+      </n-space>
     </div>
 
     <n-card title="四轴实时坐标（只读）" class="card" :bordered="false">
@@ -57,6 +134,49 @@ onUnmounted(() => {
         数据来源 D200~D207（四个 REAL），离开本页自动停止读取
       </div>
     </n-card>
+
+    <div class="debug-body">
+      <n-card class="axis-menu" :bordered="false">
+        <n-menu
+          v-model:value="currentKey"
+          :options="menuOptions"
+          :indent="18"
+        />
+      </n-card>
+
+      <n-card
+        :title="`${currentAxis.name}点动调试`"
+        class="axis-card"
+        :bordered="false"
+      >
+        <AxisPanel :axis="currentAxis" />
+
+        <n-space class="stop-row">
+          <n-button
+            type="error"
+            :disabled="!plc.online"
+            @click="stop(M_DEBUG_STOP, '调试停止')"
+          >
+            调试停止 M{{ M_DEBUG_STOP }}
+          </n-button>
+          <n-button
+            type="error"
+            ghost
+            :disabled="!plc.online"
+            @click="stop(M_STOP, '普通停止')"
+          >
+            普通停止 M{{ M_STOP }}
+          </n-button>
+        </n-space>
+
+        <div class="tip">
+          Jog± 与顶部运行/调试/退出调试/复位均为按住为 1、松开为 0，不设超时自动复位
+          （拖出按钮、切页、窗口失焦或断线均回 0，断线恢复后后端补写 0）；Inc±/Go 与
+          停止按钮为上升沿短脉冲（宽度可配，默认 200ms）；参数在失焦或点"应用"时写入
+          对应 D 地址。
+        </div>
+      </n-card>
+    </div>
   </div>
 </template>
 
@@ -70,28 +190,32 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 h2 {
   margin: 0;
   font-weight: 500;
   opacity: 0.85;
 }
+.mode {
+  margin-left: auto;
+}
 .card {
-  max-width: 720px;
+  max-width: 900px;
 }
 .hint {
   padding: 24px 0;
 }
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
 }
 .axis {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
-  padding: 16px 20px;
+  padding: 14px 16px;
 }
 .axis-name {
   font-size: 13px;
@@ -99,19 +223,36 @@ h2 {
   margin-bottom: 6px;
 }
 .axis-value {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .axis-unit {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   opacity: 0.6;
   margin-left: 4px;
 }
+.debug-body {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.axis-menu {
+  width: 140px;
+  flex-shrink: 0;
+}
+.axis-card {
+  flex: 1;
+  min-width: 0;
+}
+.stop-row {
+  margin-top: 20px;
+}
 .tip {
-  margin-top: 12px;
   font-size: 12px;
   opacity: 0.45;
+  line-height: 1.6;
+  margin-top: 12px;
 }
 </style>

@@ -48,6 +48,12 @@ pub fn run() {
             plc::client::plc_subscribe,
             plc::client::plc_unsubscribe,
             plc::client::plc_status,
+            plc::client::axis_read,
+            plc::client::coil_set,
+            plc::client::coil_pulse,
+            plc::client::coil_toggle,
+            plc::client::write_real,
+            plc::client::coil_clear_all,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

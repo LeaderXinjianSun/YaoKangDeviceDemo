@@ -42,3 +42,52 @@ export function plcUnsubscribe(group: string): Promise<void> {
 export function plcStatus(): Promise<PlcStatus> {
   return invoke("plc_status");
 }
+
+/**
+ * 点动脉冲线圈"按 1 松 0"。
+ * @param m M 软元件号（如 M201 传 201，后端按 m_base 换算）
+ * @param on true=按下写 ON，false=松开发 OFF（不设超时自动复位）
+ */
+export function coilSet(m: number, on: boolean): Promise<void> {
+  return invoke("coil_set", { m, on });
+}
+
+/** 轴参数回读结果：enable=null 表示该轴无使能线圈（电推杆） */
+export interface AxisSnapshot {
+  enable: boolean | null;
+  values: number[];
+}
+
+/**
+ * 进入调试页/切换轴时回读某轴的使能线圈与各 D 参数（REAL，按 ds 顺序）。
+ * enable 传 null 表示不读使能
+ */
+export function axisRead(
+  enable: number | null,
+  ds: number[]
+): Promise<AxisSnapshot> {
+  return invoke("axis_read", { enable, ds });
+}
+
+/**
+ * 上升沿命令短脉冲（Inc+/Inc-/Abs/停止/运行/调试/退出/复位）。
+ * 后端写 ON 后按 cmd_pulse_ms（默认 200ms）自动写 OFF
+ */
+export function coilPulse(m: number): Promise<void> {
+  return invoke("coil_pulse", { m });
+}
+
+/** 保持型线圈取反（如调试使能 M200）：后端锁内读改写，返回取反后的新值 */
+export function coilToggle(m: number): Promise<boolean> {
+  return invoke("coil_toggle", { m });
+}
+
+/** 写 REAL 到 D 寄存器（占 D、D+1 两个寄存器，字节序按参数页配置） */
+export function writeReal(d: number, v: number): Promise<void> {
+  return invoke("write_real", { d, v });
+}
+
+/** 一键清零所有当前置位的点动线圈（切页/窗口失焦/停止按钮调用） */
+export function coilClearAll(): Promise<void> {
+  return invoke("coil_clear_all");
+}

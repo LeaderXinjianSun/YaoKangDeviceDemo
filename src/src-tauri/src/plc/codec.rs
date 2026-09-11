@@ -34,3 +34,15 @@ pub fn decode_real(regs: [u16; 2], order: ByteOrder) -> f32 {
     };
     f32::from_be_bytes(bytes)
 }
+
+/// f32 -> 两个保持寄存器（decode_real 的逆变换）
+pub fn encode_real(v: f32, order: ByteOrder) -> [u16; 2] {
+    let [a, b, c, d] = v.to_be_bytes();
+    let (a, b, c, d) = (a as u16, b as u16, c as u16, d as u16);
+    match order {
+        ByteOrder::Abcd => [(a << 8) | b, (c << 8) | d],
+        ByteOrder::Cdab => [(c << 8) | d, (a << 8) | b],
+        ByteOrder::Badc => [(b << 8) | a, (d << 8) | c],
+        ByteOrder::Dcba => [(d << 8) | c, (b << 8) | a],
+    }
+}

@@ -24,6 +24,8 @@ const DEFAULTS: &[(&str, &str)] = &[
     // 信捷 D/M 软元件的 Modbus 基址（按现场调整，默认 0）
     ("d_base", "0"),
     ("m_base", "0"),
+    // Inc/Abs/停止等上升沿命令线圈的短脉冲宽度（毫秒）
+    ("cmd_pulse_ms", "200"),
 ];
 
 /// 读取全部参数（供后端异步任务在 spawn_blocking 中使用）

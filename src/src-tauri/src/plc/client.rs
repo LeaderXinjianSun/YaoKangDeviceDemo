@@ -20,7 +20,7 @@ use tokio_modbus::prelude::*;
 use tokio_modbus::Slave;
 
 use super::address::PlcMap;
-use super::codec::{decode_real, ByteOrder};
+use super::codec::{decode_real, encode_real, ByteOrder};
 
 /// 事件名
 const EV_STATUS: &str = "plc::status";
@@ -76,6 +76,8 @@ pub(crate) struct PlcConfig {
     read_interval_ms: u64,
     backoff_ms: Vec<u64>,
     byte_order: ByteOrder,
+    /// Inc/Abs/停止等上升沿命令线圈的短脉冲宽度
+    cmd_pulse_ms: u64,
     map: PlcMap,
 }
 
@@ -107,6 +109,7 @@ impl PlcConfig {
                 backoff_ms
             },
             byte_order: ByteOrder::parse(get(m, "real_byte_order", "CDAB")),
+            cmd_pulse_ms: num("cmd_pulse_ms", 200).max(20),
             map: PlcMap {
                 d_base: num("d_base", 0) as u16,
                 m_base: num("m_base", 0) as u16,
@@ -133,6 +136,9 @@ struct Inner {
     /// 监督器睡眠/等待的唤醒信号：手动连接、手动断开、掉线
     wake: Notify,
     subs: Mutex<HashMap<String, Subscription>>,
+    /// 当前置位的点动脉冲线圈（M 软元件号 -> 看门狗停止信号）。
+    /// 断线/手动断开时通知全部看门狗退出；记录保留以便重连后补写 OFF
+    held: Mutex<HashMap<u16, Arc<Notify>>>,
 }
 
 #[derive(Clone)]
@@ -158,6 +164,7 @@ impl Plc {
                 ever_online: AtomicBool::new(false),
                 wake: Notify::new(),
                 subs: Mutex::new(HashMap::new()),
+                held: Mutex::new(HashMap::new()),
             }),
         };
         let supervisor = plc.clone();
@@ -198,6 +205,8 @@ impl Plc {
         }
         conn.take();
         drop(conn);
+        // 连接已断无法写 OFF：停止看门狗计时，保留置位记录待重连后补清零
+        self.freeze_held().await;
         self.set_status(StatusKind::Reconnecting).await;
         self.inner.wake.notify_one();
     }
@@ -216,6 +225,8 @@ impl Plc {
     async fn disconnect(&self) {
         self.inner.manual_stop.store(true, Ordering::SeqCst);
         self.inner.conn.lock().await.take();
+        // 与断线一致：看门狗退出，置位记录保留（下次连接时补清零）
+        self.freeze_held().await;
         self.set_status(StatusKind::Offline).await;
         self.inner.wake.notify_one();
     }
@@ -262,6 +273,269 @@ impl Plc {
     async fn reload_config(&self, cfg: PlcConfig) {
         *self.inner.config.lock().await = cfg;
     }
+
+    // ---------- P2：写原语（全部报文共用 conn 同一把串行锁） ----------
+
+    /// 写单个线圈（FC05，绝对 Modbus 线圈地址）。
+    /// 超时/传输错误立即判离线；Modbus 异常作为业务错误返回
+    async fn write_coil_raw(&self, addr: u16, on: bool) -> Result<(), String> {
+        let cfg = self.config_clone().await;
+        let io = Duration::from_millis(cfg.io_timeout_ms);
+        let mut guard = self.inner.conn.lock().await;
+        let Some(ctx) = guard.as_mut() else {
+            return Err("PLC 未连接".into());
+        };
+        match timeout(io, ctx.write_single_coil(addr, on)).await {
+            Ok(Ok(Ok(()))) => Ok(()),
+            Ok(Ok(Err(e))) => Err(format!("Modbus 写线圈失败：{e:?}")),
+            Ok(Err(e)) => {
+                drop(guard);
+                self.mark_downline().await;
+                Err(format!("写线圈传输错误：{e}"))
+            }
+            Err(_) => {
+                drop(guard);
+                self.mark_downline().await;
+                Err(format!("写线圈超时（{}ms）", cfg.io_timeout_ms))
+            }
+        }
+    }
+
+    /// 写 REAL（FC16，两个保持寄存器，D 软元件号），字节序按配置
+    async fn write_real_raw(&self, d: u16, v: f32) -> Result<(), String> {
+        let cfg = self.config_clone().await;
+        let addr = cfg.map.d_reg(d);
+        let regs = encode_real(v, cfg.byte_order);
+        let io = Duration::from_millis(cfg.io_timeout_ms);
+        let mut guard = self.inner.conn.lock().await;
+        let Some(ctx) = guard.as_mut() else {
+            return Err("PLC 未连接".into());
+        };
+        match timeout(io, ctx.write_multiple_registers(addr, &regs)).await {
+            Ok(Ok(Ok(()))) => Ok(()),
+            Ok(Ok(Err(e))) => Err(format!("Modbus 写寄存器失败：{e:?}")),
+            Ok(Err(e)) => {
+                drop(guard);
+                self.mark_downline().await;
+                Err(format!("写寄存器传输错误：{e}"))
+            }
+            Err(_) => {
+                drop(guard);
+                self.mark_downline().await;
+                Err(format!("写寄存器超时（{}ms）", cfg.io_timeout_ms))
+            }
+        }
+    }
+
+    /// 读 REAL（FC03，两个保持寄存器，D 软元件号），字节序按配置
+    async fn read_real_raw(&self, d: u16) -> Result<f32, String> {
+        let cfg = self.config_clone().await;
+        let addr = cfg.map.d_reg(d);
+        let io = Duration::from_millis(cfg.io_timeout_ms);
+        let mut guard = self.inner.conn.lock().await;
+        let Some(ctx) = guard.as_mut() else {
+            return Err("PLC 未连接".into());
+        };
+        match timeout(io, ctx.read_holding_registers(addr, 2)).await {
+            Ok(Ok(Ok(v))) if v.len() >= 2 => Ok(decode_real([v[0], v[1]], cfg.byte_order)),
+            Ok(Ok(Ok(_))) => Err("读寄存器返回长度不足".into()),
+            Ok(Ok(Err(e))) => Err(format!("Modbus 读寄存器失败：{e:?}")),
+            Ok(Err(e)) => {
+                drop(guard);
+                self.mark_downline().await;
+                Err(format!("读寄存器传输错误：{e}"))
+            }
+            Err(_) => {
+                drop(guard);
+                self.mark_downline().await;
+                Err(format!("读寄存器超时（{}ms）", cfg.io_timeout_ms))
+            }
+        }
+    }
+
+    /// 读单个线圈（FC01，M 软元件号）
+    async fn read_coil_m(&self, m: u16) -> Result<bool, String> {
+        let cfg = self.config_clone().await;
+        let addr = cfg.map.m_coil(m);
+        let io = Duration::from_millis(cfg.io_timeout_ms);
+        let mut guard = self.inner.conn.lock().await;
+        let Some(ctx) = guard.as_mut() else {
+            return Err("PLC 未连接".into());
+        };
+        match timeout(io, ctx.read_coils(addr, 1)).await {
+            Ok(Ok(Ok(v))) => Ok(v.first().copied().ok_or("读线圈返回空")?),
+            Ok(Ok(Err(e))) => Err(format!("Modbus 读线圈失败：{e:?}")),
+            Ok(Err(e)) => {
+                drop(guard);
+                self.mark_downline().await;
+                Err(format!("读线圈传输错误：{e}"))
+            }
+            Err(_) => {
+                drop(guard);
+                self.mark_downline().await;
+                Err(format!("读线圈超时（{}ms）", cfg.io_timeout_ms))
+            }
+        }
+    }
+
+    /// 点动脉冲线圈"按 1 松 0"（参数为 M 软元件号）。
+    /// on=true：写 ON 并启动看门狗；on=false：取消看门狗并写 OFF
+    async fn pulse_set(&self, m: u16, on: bool) -> Result<(), String> {
+        if on {
+            let cfg = self.config_clone().await;
+            let addr = cfg.map.m_coil(m);
+            // 先确认写 ON 成功，再登记到 held（断线/切页/失焦清零、重连补 OFF）。
+            // Jog 不设超时自动复位，完全由松开事件决定何时写 OFF
+            self.write_coil_raw(addr, true).await?;
+            if let Some(old) =
+                self.inner.held.lock().await.insert(m, Arc::new(Notify::new()))
+            {
+                old.notify_one();
+            }
+            Ok(())
+        } else {
+            let addr = self.config_clone().await.map.m_coil(m);
+            self.release_coil(m, addr).await
+        }
+    }
+
+    /// 上升沿命令短脉冲（Inc/Abs/停止/模式切换，参数为 M 软元件号）：
+    /// 写 ON → 保持 cmd_pulse_ms → 自动写 OFF；同样纳入 held 跟踪，
+    /// 断线/切页/失焦清零与重连补写 OFF 的机制与点动完全一致
+    async fn pulse_cmd(&self, m: u16) -> Result<(), String> {
+        let cfg = self.config_clone().await;
+        let addr = cfg.map.m_coil(m);
+        let width_ms = cfg.cmd_pulse_ms;
+        self.write_coil_raw(addr, true).await?;
+        self.hold_coil(m, addr, width_ms).await;
+        Ok(())
+    }
+
+    /// 登记一个命令脉冲线圈并启动到时自动 OFF 的任务（重复触发替换旧任务）
+    async fn hold_coil(&self, m: u16, addr: u16, width_ms: u64) {
+        let stop = Arc::new(Notify::new());
+        // 同一线圈重复触发：替换定时任务，旧任务收到通知自行退出
+        if let Some(old) = self.inner.held.lock().await.insert(m, stop.clone()) {
+            old.notify_one();
+        }
+        let plc = self.clone();
+        tauri::async_runtime::spawn(async move {
+            pulse_release_task(plc, m, addr, width_ms, stop).await;
+        });
+    }
+
+    /// 取消线圈的定时任务并立即写 OFF；OFF 未送达则登记冻结条目待重连补写
+    async fn release_coil(&self, m: u16, addr: u16) -> Result<(), String> {
+        let stop = self.inner.held.lock().await.remove(&m);
+        let res = self.write_coil_raw(addr, false).await;
+        if let Some(stop) = stop {
+            stop.notify_one();
+        }
+        if res.is_err() {
+            // OFF 未送达（离线/传输错误）：登记为冻结条目，重连后补写 OFF
+            self.inner
+                .held
+                .lock()
+                .await
+                .entry(m)
+                .or_insert_with(|| Arc::new(Notify::new()));
+        }
+        res
+    }
+
+    /// 取反（M 软元件号）：读—改—写全程持同一把锁，返回写后的新值
+    async fn toggle_coil_m(&self, m: u16) -> Result<bool, String> {
+        let cfg = self.config_clone().await;
+        let addr = cfg.map.m_coil(m);
+        let io = Duration::from_millis(cfg.io_timeout_ms);
+        let mut guard = self.inner.conn.lock().await;
+        let Some(ctx) = guard.as_mut() else {
+            return Err("PLC 未连接".into());
+        };
+        let cur = match timeout(io, ctx.read_coils(addr, 1)).await {
+            Ok(Ok(Ok(v))) => v.first().copied().ok_or("读线圈返回空")?,
+            Ok(Ok(Err(e))) => return Err(format!("Modbus 读线圈失败：{e:?}")),
+            Ok(Err(e)) => {
+                drop(guard);
+                self.mark_downline().await;
+                return Err(format!("读线圈传输错误：{e}"));
+            }
+            Err(_) => {
+                drop(guard);
+                self.mark_downline().await;
+                return Err(format!("读线圈超时（{}ms）", cfg.io_timeout_ms));
+            }
+        };
+        let new = !cur;
+        match timeout(io, ctx.write_single_coil(addr, new)).await {
+            Ok(Ok(Ok(()))) => Ok(new),
+            Ok(Ok(Err(e))) => Err(format!("Modbus 写线圈失败：{e:?}")),
+            Ok(Err(e)) => {
+                drop(guard);
+                self.mark_downline().await;
+                Err(format!("写线圈传输错误：{e}"))
+            }
+            Err(_) => {
+                drop(guard);
+                self.mark_downline().await;
+                Err(format!("写线圈超时（{}ms）", cfg.io_timeout_ms))
+            }
+        }
+    }
+
+    /// 连接失效时调用：通知所有点动看门狗停止计时；置位记录保留待重连补清零
+    async fn freeze_held(&self) {
+        for stop in self.inner.held.lock().await.values() {
+            stop.notify_one();
+        }
+    }
+
+    /// 将所有登记置位的点动线圈写 OFF 并清空记录。
+    /// 重连成功后自动调用，也供"切页/失焦一键清零"命令使用；
+    /// 中途传输失败则停止，剩余记录保留给下一次重连补写
+    async fn release_all_held(&self) {
+        let entries: Vec<(u16, u16)> = {
+            let cfg = self.config_clone().await;
+            self.inner
+                .held
+                .lock()
+                .await
+                .keys()
+                .map(|&m| (m, cfg.map.m_coil(m)))
+                .collect()
+        };
+        for (m, addr) in entries {
+            match self.write_coil_raw(addr, false).await {
+                Ok(()) => {
+                    if let Some(stop) = self.inner.held.lock().await.remove(&m) {
+                        stop.notify_one();
+                    }
+                }
+                // 已判离线：剩余条目保留，下一次重连由本方法继续补写
+                Err(_) => return,
+            }
+        }
+    }
+}
+
+/// 命令短脉冲定时回落：到时（或被新触发/断线冻结通知）后写 OFF；
+/// 仅用于 Inc/Abs/停止/模式等上升沿命令，Jog 不启用
+async fn pulse_release_task(plc: Plc, m: u16, addr: u16, wd_ms: u64, stop: Arc<Notify>) {
+    tokio::select! {
+        _ = tokio::time::sleep(Duration::from_millis(wd_ms)) => {}
+        _ = stop.notified() => return,
+    }
+    match plc.write_coil_raw(addr, false).await {
+        Ok(()) => {
+            // 仅当登记的仍是本任务时注销（期间可能已被新按下替换）
+            let mut held = plc.inner.held.lock().await;
+            if held.get(&m).map_or(false, |n| Arc::ptr_eq(n, &stop)) {
+                held.remove(&m);
+            }
+        }
+        // OFF 未送达：mark_downline 的 freeze_held 已保留条目，重连后补清零
+        Err(_) => {}
+    }
 }
 
 /// 连接监督器：连接 → 失败退避重连 / 成功后等掉线或手动操作
@@ -296,6 +570,8 @@ async fn run_supervisor(plc: Plc) {
                 fails = 0;
                 plc.inner.ever_online.store(true, Ordering::SeqCst);
                 plc.set_status(StatusKind::Online).await;
+                // 断线/手动断开期间被置位的点动线圈，重连后第一时间补写 OFF
+                plc.release_all_held().await;
                 let heartbeat = plc.clone();
                 tauri::async_runtime::spawn(async move { heartbeat_task(heartbeat).await });
             }
@@ -478,4 +754,79 @@ pub(crate) async fn plc_status(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<String, String> {
     Ok(state.plc.status().await.as_str().to_string())
+}
+
+/// 点动线圈"按 1 松 0"（Jog±）。
+/// 参数 m 为 M 软元件号（如 M201 传 201，后端按 m_base 换算）。
+/// 不设超时自动复位：保持到收到松开/切页/失焦；断线时冻结，重连补写 OFF
+#[tauri::command]
+pub(crate) async fn coil_set(
+    state: tauri::State<'_, crate::AppState>,
+    m: u16,
+    on: bool,
+) -> Result<(), String> {
+    state.plc.pulse_set(m, on).await
+}
+
+/// 轴参数回读：使能线圈（无使能轴为 None）+ 各 D 参数 REAL（按入参顺序）
+#[derive(Debug, Serialize)]
+pub(crate) struct AxisSnapshot {
+    enable: Option<bool>,
+    values: Vec<f32>,
+}
+
+/// 进入调试页/切换轴时回读某轴的使能状态与调试参数（速度/Inc 距离/Abs 目标）
+#[tauri::command]
+pub(crate) async fn axis_read(
+    state: tauri::State<'_, crate::AppState>,
+    enable: Option<u16>,
+    ds: Vec<u16>,
+) -> Result<AxisSnapshot, String> {
+    let mut values = Vec::with_capacity(ds.len());
+    for d in ds {
+        values.push(state.plc.read_real_raw(d).await?);
+    }
+    let enable = match enable {
+        Some(m) => Some(state.plc.read_coil_m(m).await?),
+        None => None,
+    };
+    Ok(AxisSnapshot { enable, values })
+}
+
+/// 上升沿命令短脉冲（Inc+/Inc-/Abs/停止/运行/调试/退出/复位）：
+/// 后端写 ON 后按 cmd_pulse_ms（默认 200ms）自动写 OFF，并受点动看门狗保护
+#[tauri::command]
+pub(crate) async fn coil_pulse(
+    state: tauri::State<'_, crate::AppState>,
+    m: u16,
+) -> Result<(), String> {
+    state.plc.pulse_cmd(m).await
+}
+
+/// 保持型线圈取反（如调试使能 M200）：同一把锁内读当前值→写反值，返回新值
+#[tauri::command]
+pub(crate) async fn coil_toggle(
+    state: tauri::State<'_, crate::AppState>,
+    m: u16,
+) -> Result<bool, String> {
+    state.plc.toggle_coil_m(m).await
+}
+
+/// 写 REAL：d 为 D 软元件号（占 D、D+1 两个寄存器，FC16），字节序按配置
+#[tauri::command]
+pub(crate) async fn write_real(
+    state: tauri::State<'_, crate::AppState>,
+    d: u16,
+    v: f32,
+) -> Result<(), String> {
+    state.plc.write_real_raw(d, v).await
+}
+
+/// 一键清零：把所有当前置位的点动线圈写 OFF（切页/失焦/停止按钮调用）
+#[tauri::command]
+pub(crate) async fn coil_clear_all(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    state.plc.release_all_held().await;
+    Ok(())
 }
