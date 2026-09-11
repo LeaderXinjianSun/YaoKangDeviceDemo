@@ -971,21 +971,41 @@ pub(crate) struct ArrayDump {
     rows: Vec<Vec<f64>>,
 }
 
-/// 数组下发入参（与上读结果同构）
+/// 数组下发入参（与上读结果同构）。arrayId 为下发时关联的配方（无配方时为 null）
 #[derive(Debug, Deserialize)]
 pub(crate) struct ArrayUploadReq {
     depth: u16,
     mode: u16,
     rows: Vec<Vec<f64>>,
+    #[serde(rename = "arrayId")]
+    array_id: Option<i64>,
 }
 
-/// 运动数组下发：按段 FC16 批量写，最后写深度/模式；写前做范围校验，超限直接拒绝
+/// 运动数组下发：按段 FC16 批量写，最后写深度/模式；写前做范围校验，超限直接拒绝。
+/// 每次调用（成功或失败）均追加一条 download_log
 #[tauri::command]
 pub(crate) async fn array_upload(
     state: tauri::State<'_, crate::AppState>,
     req: ArrayUploadReq,
 ) -> Result<(), String> {
-    state.plc.array_upload(req.depth, req.mode, &req.rows).await
+    let array_id = req.array_id;
+    let result = state
+        .plc
+        .array_upload(req.depth, req.mode, &req.rows)
+        .await;
+    // 下发结果落日志（日志自身失败不改变下发结论）
+    let (ok, detail) = match &result {
+        Ok(()) => (true, Some(format!("下发 {} 步成功", req.depth))),
+        Err(e) => (false, Some(e.clone())),
+    };
+    let db = state.db.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        if let Ok(conn) = db.lock() {
+            let _ = crate::db::log_from_command(&conn, array_id, ok, detail);
+        }
+    })
+    .await;
+    result
 }
 
 /// 运动数组上读（点一次读一次，不轮询、不订阅）

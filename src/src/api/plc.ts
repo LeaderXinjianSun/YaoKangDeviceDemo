@@ -101,11 +101,17 @@ export interface ArrayDump {
   rows: number[][];
 }
 
+/** 数组下发入参：ArrayDump + 可选关联配方 id（用于写 download_log） */
+export interface ArrayUploadReq extends ArrayDump {
+  /** 当前载入的配方 id；未关联配方（直接编辑下发）时为 null/省略 */
+  arrayId?: number | null;
+}
+
 /**
  * 运动数组下发：按段 FC16 批量写 D2000 起 13 段数据，最后写 D1100/D1101。
- * 后端做范围校验，超限返回错误且不产生任何写入
+ * 后端做范围校验，超限返回错误且不产生任何写入；每次调用均写一条下发记录
  */
-export function arrayUpload(payload: ArrayDump): Promise<void> {
+export function arrayUpload(payload: ArrayUploadReq): Promise<void> {
   return invoke("array_upload", { req: payload });
 }
 

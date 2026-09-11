@@ -1,10 +1,13 @@
-//! SQLite：参数键值表（P0）。
-//! P5 起在同一库文件追加运动数组业务表。
+//! SQLite：参数键值表（P0）与 P5 运动数组业务表。
+
+pub(crate) mod recipes;
 
 use std::collections::HashMap;
 
 use rusqlite::Connection;
 use tauri::{AppHandle, Manager};
+
+pub(crate) use recipes::log_from_command;
 
 /// 连接参数 + 通信时序的首启默认值（第 9 条：默认 192.168.1.88:502）
 const DEFAULTS: &[(&str, &str)] = &[
@@ -56,12 +59,45 @@ pub fn open_app_db<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<Connection, 
 
     let path = dir.join("ldr_plc.db");
     let conn = Connection::open(path).map_err(|e| format!("打开 SQLite 失败: {e}"))?;
+    // 开启外键级联：删配方时其 move_step 一并删除
+    conn.execute_batch("PRAGMA foreign_keys = ON;")
+        .map_err(|e| format!("开启外键失败: {e}"))?;
 
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS app_config (
              key        TEXT PRIMARY KEY,
              value      TEXT NOT NULL,
              updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+         );
+
+         CREATE TABLE IF NOT EXISTS move_array (
+             id         INTEGER PRIMARY KEY AUTOINCREMENT,
+             name       TEXT NOT NULL UNIQUE,
+             depth      INTEGER NOT NULL CHECK(depth BETWEEN 1 AND 16),
+             mode       INTEGER NOT NULL,
+             remark     TEXT,
+             created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+             updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+         );
+
+         CREATE TABLE IF NOT EXISTS move_step (
+             id          INTEGER PRIMARY KEY AUTOINCREMENT,
+             array_id    INTEGER NOT NULL REFERENCES move_array(id) ON DELETE CASCADE,
+             step_no     INTEGER NOT NULL,
+             chest_pos   REAL, leg_pos  REAL, seat_pos REAL,
+             chest_vel   REAL, leg_vel  REAL, seat_vel REAL,
+             chest_acc   REAL, leg_acc  REAL, seat_acc REAL,
+             chest_dec   REAL, leg_dec  REAL, seat_dec REAL,
+             interval_ms INTEGER,
+             UNIQUE(array_id, step_no)
+         );
+
+         CREATE TABLE IF NOT EXISTS download_log (
+             id       INTEGER PRIMARY KEY AUTOINCREMENT,
+             array_id INTEGER,
+             ts       TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+             ok       INTEGER NOT NULL,
+             detail   TEXT
          );",
     )
     .map_err(|e| format!("建表失败: {e}"))?;
