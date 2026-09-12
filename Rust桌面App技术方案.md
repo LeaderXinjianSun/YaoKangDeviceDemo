@@ -387,27 +387,44 @@ CREATE TABLE alarm_state (
 
 ## 9. 配置项（存 SQLite `app_config` 表，第 9 条）
 
-所有参数存第 6 节同一 SQLite 文件的 `app_config` 键值表，由参数界面读写；不使用 settings.json。默认值：
+所有参数存第 6 节同一 SQLite 文件的 `app_config` 键值表，由参数界面读写；不使用 settings.json。首次启动时 `seed_defaults` 把下表默认值 `INSERT OR IGNORE` 播种进库，已存在的 key 不覆盖（现场修改可跨升级保留）。
 
-| key                                   | 默认值                    | 说明                         |
-| ------------------------------------- | ---------------------- | -------------------------- |
-| `plc.ip`                              | `192.168.1.88`         | PLC IP，参数界面可改              |
-| `plc.port`                            | `502`                  | Modbus TCP 端口              |
-| `plc.unit_id`                         | `1`                    | 从站地址                       |
-| `read_interval_ms`                    | `500`                  | 仅订阅组生效                     |
-| `real_order` / `dint_order`           | `ABCD`                 | REAL/DINT 字序               |
-| `m_base` / `d_base`                   | 按现场                    | 软元件 Modbus 基址偏移            |
-| `pulse_watchdog_ms`                   | `5000`                 | 按1松0看门狗                    |
-| `heartbeat_ms`                        | `100`                  | D210 心跳写间隔                 |
-| `heartbeat_reg`                       | `210`                  | 心跳寄存器 D210                 |
-| `alarm_interval_ms`                   | `500`                  | 报警/提示/D400 常驻轮询周期（第 2 阶段），缺省回退 `read_interval_ms` |
-| `watchdog_read_ms` / `watchdog_fails` | `1000` / `3`           | D210 回读判停周期与连续失败次数（第 10 条） |
-| `auto_connect`                        | `true`                 | 开机自动连接；掉线自动重连（手动断开时暂停）     |
-| `reconnect_backoff_ms`                | `1000,2000,5000,10000` | 重连退避序列                     |
-| `conn_timeout_ms` / `io_timeout_ms`   | `3000` / `1000`        | 连接/读写超时，保证命令不挂起、不卡 UI      |
-| 各轴速度 / 加减速上下限                         | 见 3.4                  | 限值校验                       |
+**PLC 连接（设置页"PLC 连接"卡片）**
 
-`config.rs` 启动时从 `app_config` 加载到内存配置结构，参数保存后更新数据库并刷新内存；IP/端口在下一次连接时生效。
+| key | 默认值 | 说明 |
+| --- | --- | --- |
+| `plc_ip` | `192.168.1.88` | PLC IP，下一次连接生效 |
+| `plc_port` | `502` | Modbus TCP 端口 |
+| `modbus_unit_id` | `1` | 从站/单元号 |
+| `real_byte_order` | `CDAB` | REAL 四字字节序（ABCD/CDAB/BADC/DCBA），选择即落库，重新进入调试页生效 |
+| `auto_connect` | `true` | 开机自动连接；掉线自动重连（手动断开时暂停） |
+
+**通信时序（毫秒，设置页"通信时序"卡片）**
+
+| key | 默认值 | 说明 |
+| --- | --- | --- |
+| `read_interval_ms` | `500` | 坐标遥测（D200）/D220 订阅读取周期，仅订阅期间生效 |
+| `alarm_interval_ms` | `500` | 报警/提示/D400 常驻轮询周期；后端在缺省/小于 100 时回退 `read_interval_ms` |
+| `heartbeat_reg` | `210` | 上位机心跳寄存器（D210） |
+| `heartbeat_ms` | `100` | D210 心跳写间隔；心跳与业务共用连接，抢不到锁则跳过本拍 |
+| `watchdog_read_ms` | `1000` | 心跳回读周期（每隔该时长回读 D210 校验一次） |
+| `watchdog_fails` | `3` | 回读连续失败多少次判离线 |
+| `conn_timeout_ms` | `3000` | TCP 连接超时 |
+| `io_timeout_ms` | `1000` | 单次读写超时，保证命令不挂起、不卡 UI |
+
+**Modbus 地址与脉冲（高级，设置页"Modbus 地址与脉冲（高级）"卡片）**
+
+| key | 默认值 | 说明 |
+| --- | --- | --- |
+| `d_base` | `0` | D 软元件号 → Modbus 地址的基址偏移 |
+| `m_base` | `0` | M 软元件号 → Modbus 线圈地址的基址偏移 |
+| `cmd_pulse_ms` | `200` | Inc±/Abs/Go/调试停止等上升沿命令"写 ON 后自动写 OFF"的脉冲宽度（最小 20ms） |
+
+另有 `reconnect_backoff_ms`（默认 `1000,2000,5000,10000`，重连退避序列）存库但不在设置页暴露，如需调整直接改 SQLite。
+
+PLC 侧看门狗超时与 `heartbeat_ms` 的建议比例为 3:1~5:1（如心跳 100ms、PLC 超时设 500ms），以容忍业务读写偶发占用连接。运动数组的速度/加减速上位机**不做限值校验**，由 PLC 侧工艺约束保证。
+
+后端在每次（重）连接时从 `app_config` 重新加载到内存配置结构；IP/端口/时序等连接相关参数在下一次连接时生效。
 
 ## 10. 开发与联调计划
 

@@ -35,6 +35,12 @@ const form = reactive({
   auto_connect: true,
   conn_timeout_ms: 3000,
   io_timeout_ms: 1000,
+  // P7：补齐高级参数（均在 SQLite app_config，首启播种默认值）
+  heartbeat_reg: 210,
+  alarm_interval_ms: 500,
+  d_base: 0,
+  m_base: 0,
+  cmd_pulse_ms: 200,
 });
 
 // 配置在 SQLite 中统一以字符串存储
@@ -47,6 +53,11 @@ const intKeys = [
   "watchdog_fails",
   "conn_timeout_ms",
   "io_timeout_ms",
+  "heartbeat_reg",
+  "alarm_interval_ms",
+  "d_base",
+  "m_base",
+  "cmd_pulse_ms",
 ] as const;
 
 const byteOrderOptions = [
@@ -199,6 +210,32 @@ async function onByteOrderChange(v: string) {
           </n-form-item>
           <n-form-item label="读写超时">
             <n-input-number v-model:value="form.io_timeout_ms" :min="100" :step="100" />
+          </n-form-item>
+        </n-space>
+      </n-form>
+    </n-card>
+
+    <n-card title="Modbus 地址与脉冲（高级）" class="card" :bordered="false">
+      <n-form label-placement="left" label-width="130" :show-feedback="false">
+        <n-space>
+          <n-form-item label="心跳寄存器 D">
+            <n-input-number v-model:value="form.heartbeat_reg" :min="0" :max="65535" />
+          </n-form-item>
+          <n-form-item label="报警轮询周期">
+            <n-input-number v-model:value="form.alarm_interval_ms" :min="100" :step="100" />
+          </n-form-item>
+        </n-space>
+        <n-space>
+          <n-form-item label="D 软元件基址">
+            <n-input-number v-model:value="form.d_base" :min="0" :max="65535" />
+          </n-form-item>
+          <n-form-item label="M 软元件基址">
+            <n-input-number v-model:value="form.m_base" :min="0" :max="65535" />
+          </n-form-item>
+        </n-space>
+        <n-space>
+          <n-form-item label="命令脉冲宽度">
+            <n-input-number v-model:value="form.cmd_pulse_ms" :min="20" :step="20" />
           </n-form-item>
         </n-space>
       </n-form>
