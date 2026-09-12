@@ -1,6 +1,8 @@
 # 排除 PLC 工程编译/导出目录
 /A00*/
-/HMI/
+HMI/
+new/
+old/
 
 # 编辑器本地配置
 .vscode/

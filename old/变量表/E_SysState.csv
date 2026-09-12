@@ -1,8 +1,0 @@
-序号,成员名称,枚举值,注释,
-1,eInit,0,初始化,
-2,eIdle,1,待机/就绪,
-3,eRunning,2,自动运行中,
-4,eManual,3,手动模式,
-5,eResetting,4,复位中,
-6,eError,5,故障停机,
-7,eEmergency,6,紧急状态,

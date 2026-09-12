@@ -1,8 +1,0 @@
-序号,成员变量名,数据类型,注释,
-1,iCode,INT,"错误码 (按 CONST_Definitions, 当前覆盖 1xxx~6xxx)",
-2,iLevel,INT,"级别 (0=Info 1=Warning 2=Critical, SystemError.iLevel 统一)",
-3,iSource,INT,"来源码 (SOURCE_* 常量, 全局唯一编号)",
-4,iSubCode,INT, 子码 (9xxx PLC / Er.xxx SV630),
-5,iPriority,INT,"[P2] 仲裁权重 (PW_* 常量, 同 iLevel 时值越大越优先)",
-6,bPending,BOOL,"有待处理请求 (写入方置 TRUE, ERROR_MANAGER 消费后清零)",
-7,bPad0,BOOL,,

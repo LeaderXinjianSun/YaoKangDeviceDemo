@@ -1,7 +1,0 @@
-序号,成员变量名,数据类型,注释,
-1,iErrCode,INT,,
-2,iPad,INT,,
-3,bBusy,BOOL,,
-4,bDone,BOOL,,
-5,bError,BOOL,,
-6,bPad0,BOOL,,

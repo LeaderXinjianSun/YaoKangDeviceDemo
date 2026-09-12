@@ -1,7 +1,0 @@
-序号,成员变量名,数据类型,注释,
-1,rActPulse,REAL,当前原始脉冲值 高速计数器,
-2,rActSpeed,REAL,当前脉冲速度,
-3,rActCurrent,REAL,,
-4,rAdAngle,REAL,AD编码器拟合后的角度,
-5,diAdRaw,DINT,扩展板卡AD原始值,
-6,bAdValid,BOOL,AD角度反馈有效,
