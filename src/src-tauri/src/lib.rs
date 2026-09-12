@@ -49,6 +49,7 @@ pub fn run() {
             db::recipes::recipe_delete,
             db::recipes::recipe_clone,
             db::recipes::recipe_logs,
+            db::alarms::alarm_logs,
             plc::client::plc_connect,
             plc::client::plc_disconnect,
             plc::client::plc_subscribe,
@@ -62,6 +63,8 @@ pub fn run() {
             plc::client::coil_clear_all,
             plc::client::array_upload,
             plc::client::array_download,
+            plc::client::fault_codes_read,
+            plc::client::alarm_current,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

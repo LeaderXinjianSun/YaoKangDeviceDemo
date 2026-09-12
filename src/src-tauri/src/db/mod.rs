@@ -1,5 +1,6 @@
 //! SQLite：参数键值表（P0）与 P5 运动数组业务表。
 
+pub(crate) mod alarms;
 pub(crate) mod recipes;
 
 use std::collections::HashMap;
@@ -16,6 +17,8 @@ const DEFAULTS: &[(&str, &str)] = &[
     ("modbus_unit_id", "1"),
     ("real_byte_order", "CDAB"),
     ("read_interval_ms", "500"),
+    // M300 段报警/提示常驻轮询周期；缺省时后端回退 read_interval_ms
+    ("alarm_interval_ms", "500"),
     ("heartbeat_reg", "210"),
     ("heartbeat_ms", "100"),
     ("watchdog_read_ms", "1000"),
@@ -98,7 +101,22 @@ pub fn open_app_db<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<Connection, 
              ts       TEXT NOT NULL DEFAULT (datetime('now','localtime')),
              ok       INTEGER NOT NULL,
              detail   TEXT
-         );",
+         );
+
+         CREATE TABLE IF NOT EXISTS alarm_log (
+             id    INTEGER PRIMARY KEY AUTOINCREMENT,
+             addr  INTEGER NOT NULL,
+             name  TEXT NOT NULL,
+             kind  TEXT NOT NULL CHECK(kind IN ('raised','cleared')),
+             ts    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+         );
+         CREATE INDEX IF NOT EXISTS idx_alarm_log_ts ON alarm_log(ts);
+
+         CREATE TABLE IF NOT EXISTS alarm_state (
+            addr       INTEGER PRIMARY KEY,
+            is_on      INTEGER NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        );",
     )
     .map_err(|e| format!("建表失败: {e}"))?;
 

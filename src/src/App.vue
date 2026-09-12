@@ -124,6 +124,12 @@ onMounted(() => {
 
         <n-layout>
           <n-layout-header bordered class="app-header">
+            <!-- M400 段操作提示：仅 1 行，多个 TRUE 时后端已取地址最大者 -->
+            <div class="prompt-bar" :title="plc.prompt?.name ?? ''">
+              <template v-if="plc.prompt">
+                <span class="prompt-icon">!</span>{{ plc.prompt.name }}
+              </template>
+            </div>
             <n-tag
               :bordered="false"
               :type="glStepType"
@@ -132,6 +138,8 @@ onMounted(() => {
             >
               状态机：{{ glStepText }}
             </n-tag>
+            <!-- D400 当前动作步索引 -->
+            <span class="step-index">动作步：{{ plc.stepIndex ?? "--" }}</span>
             <div class="mode-pads">
               <AxisPad
                 :m="M_RUN"
@@ -181,7 +189,45 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 12px;
   padding: 0 16px;
+}
+
+/* M400 操作提示：单行，顶栏左起占位，超长省略号 */
+.prompt-bar {
+  margin-right: auto;
+  max-width: 40%;
+  height: 28px;
+  line-height: 28px;
+  padding: 0 12px;
+  border-radius: 4px;
+  background: rgba(240, 160, 32, 0.15);
+  color: #f0a020;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prompt-icon {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #f0a020;
+  color: #000;
+  font-weight: 700;
+  text-align: center;
+  font-size: 12px;
+}
+
+/* D400 动作步数字 */
+.step-index {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  white-space: nowrap;
 }
 
 .mode-pads {

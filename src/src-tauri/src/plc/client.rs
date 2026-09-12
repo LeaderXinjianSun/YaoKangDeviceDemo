@@ -3,7 +3,8 @@
 //! - 连接成功后常驻心跳任务：每 100ms 用功能码 06 向 D210 写新随机 u16，并周期回读判停；
 //! - 订阅管理器：group 引用计数，telemetry 组周期读 D200~D207，退订即停；
 //! - 所有报文共用一条 TCP 长连接与一把异步锁（tokio-modbus 的 Context 为 &mut self，
-//!   编译期即要求串行），心跳用 try_lock 实现"优先级最低、忙则跳过"。
+//!   编译期即要求串行），心跳用 try_lock 实现"优先级最低、忙则跳过"；
+//! - P6：连接成功后常驻报警监视任务，一次读 M300~M401 + D400，边沿落 SQLite 并推事件。
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, Notify};
 use tokio::time::{interval, timeout, MissedTickBehavior};
 use rand::Rng;
@@ -20,14 +21,23 @@ use tokio_modbus::prelude::*;
 use tokio_modbus::Slave;
 
 use super::address::PlcMap;
+use super::alarms::{
+    AlarmItem, AlarmSnapshot, ALARM_POINTS, FAULT_CNT, FAULT_D, PROMPT_POINTS, STEP_D,
+    WATCH_M_CNT, WATCH_M_START,
+};
 use super::arrays;
 use super::codec::{decode_dint, decode_real, encode_dint, encode_real, ByteOrder};
+use crate::db::alarms::Edge;
 
 /// 事件名
 const EV_STATUS: &str = "plc::status";
 const EV_TELEMETRY: &str = "plc::telemetry";
 /// 全局状态机 D220（HMI_GL_STEP，INT16）周期事件
 const EV_GL_STEP: &str = "plc::gl_step";
+/// P6：全部报警点电平（变化时/重连首拍）、最高地址 TRUE 提示（变化时）、D400 动作步
+const EV_ALARM_STATE: &str = "plc::alarm_state";
+const EV_PROMPT: &str = "plc::prompt";
+const EV_STEP_INDEX: &str = "plc::step_index";
 
 /// telemetry 组：D200~D207 四个 REAL（胸背/臀腿/臀盘/电推杆）
 const TELEMETRY_D: u16 = 200;
@@ -80,6 +90,8 @@ pub(crate) struct PlcConfig {
     conn_timeout_ms: u64,
     io_timeout_ms: u64,
     read_interval_ms: u64,
+    /// P6 报警/提示常驻轮询周期；配置缺失时由 from_map 回退 read_interval_ms
+    alarm_interval_ms: u64,
     backoff_ms: Vec<u64>,
     byte_order: ByteOrder,
     /// Inc/Abs/停止等上升沿命令线圈的短脉冲宽度
@@ -109,6 +121,11 @@ impl PlcConfig {
             conn_timeout_ms: num("conn_timeout_ms", 3000).max(100),
             io_timeout_ms: num("io_timeout_ms", 1000).max(50),
             read_interval_ms: num("read_interval_ms", 500).max(100),
+            // alarm_interval_ms 单独配置；未配置/非法（0）时回退 read_interval_ms
+            alarm_interval_ms: {
+                let v = get(m, "alarm_interval_ms", "").parse().unwrap_or(0);
+                if v >= 100 { v } else { num("read_interval_ms", 500).max(100) }
+            },
             backoff_ms: if backoff_ms.is_empty() {
                 vec![1000, 2000, 5000, 10000]
             } else {
@@ -145,6 +162,8 @@ struct Inner {
     /// 当前置位的点动脉冲线圈（M 软元件号 -> 看门狗停止信号）。
     /// 断线/手动断开时通知全部看门狗退出；记录保留以便重连后补写 OFF
     held: Mutex<HashMap<u16, Arc<Notify>>>,
+    /// P6：报警监视任务最近一帧快照（alarm_current 命令首屏同步用）
+    alarm_last: Mutex<AlarmSnapshot>,
 }
 
 #[derive(Clone)]
@@ -171,6 +190,7 @@ impl Plc {
                 wake: Notify::new(),
                 subs: Mutex::new(HashMap::new()),
                 held: Mutex::new(HashMap::new()),
+                alarm_last: Mutex::new(AlarmSnapshot::default()),
             }),
         };
         let supervisor = plc.clone();
@@ -715,6 +735,9 @@ async fn run_supervisor(plc: Plc) {
                 plc.release_all_held().await;
                 let heartbeat = plc.clone();
                 tauri::async_runtime::spawn(async move { heartbeat_task(heartbeat).await });
+                // P6：报警/提示/D400 常驻监视与心跳同生命周期，连接失效即退出、重连重新拉起
+                let watcher = plc.clone();
+                tauri::async_runtime::spawn(async move { alarm_watch_task(watcher).await });
             }
             Err(_) => {
                 // 退避等待；手动连接可提前打断
@@ -869,6 +892,148 @@ async fn gl_step_task(plc: Plc, stop: Arc<Notify>) {
             // 超时/IO 错误：判离线由监督器重连，本任务继续存活待恢复
             _ => plc.mark_downline().await,
         }
+    }
+}
+
+/// P6 报警/操作提示/D400 常驻监视任务（与心跳同生命周期，连接失效即退出、重连重新拉起）：
+/// - 每拍 FC01 一次读 M300~M401（空洞按下标忽略）+ FC03 读 D400，共用同一把串行锁；
+/// - 启动时加载 alarm_state 基线，重连后第一拍只对齐基线并推当前状态、不写边沿日志，
+///   防止重启后把已存在的报警误记一次 raised；
+/// - 第二拍起做边沿比较：0→1 写 raised、1→0 写 cleared，每拍状态 upsert alarm_state；
+/// - 推 plc::alarm_state（变化时）/ plc::prompt（最高地址 TRUE 提示变化时）/
+///   plc::step_index（D400，每拍）事件。
+async fn alarm_watch_task(plc: Plc) {
+    let cfg = plc.config_clone().await;
+    let m_addr = cfg.map.m_coil(WATCH_M_START);
+    let d400_addr = cfg.map.d_reg(STEP_D);
+    let io = Duration::from_millis(cfg.io_timeout_ms);
+
+    // 重启基线：addr -> on；无记录的点按 false
+    let mut prev: HashMap<u16, bool> = {
+        let db = plc.app.state::<crate::AppState>().db.clone();
+        match tauri::async_runtime::spawn_blocking(move || {
+            let conn = db.lock().map_err(|e| format!("锁失败: {e}"))?;
+            crate::db::alarms::load_baseline(&conn)
+        })
+        .await
+        {
+            Ok(Ok(map)) => map,
+            _ => HashMap::new(),
+        }
+    };
+    let mut prev_prompt: Option<u16> = None;
+    let mut first = true;
+
+    let mut ticker = interval(Duration::from_millis(cfg.alarm_interval_ms));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    loop {
+        ticker.tick().await;
+
+        let mut guard = plc.inner.conn.lock().await;
+        let Some(ctx) = guard.as_mut() else { continue };
+        let coils = timeout(io, ctx.read_coils(m_addr, WATCH_M_CNT)).await;
+        let dres = timeout(io, ctx.read_holding_registers(d400_addr, 1)).await;
+        drop(guard);
+
+        // 超时/IO 错误：连接不可信，判离线退出，监督器重连后重新拉起本任务
+        let coils_io_bad = matches!(coils, Err(_) | Ok(Err(_)));
+        let d_io_bad = matches!(dres, Err(_) | Ok(Err(_)));
+        if coils_io_bad || d_io_bad {
+            plc.mark_downline().await;
+            return;
+        }
+
+        // Modbus 异常/长度不足：本拍跳过线圈处理；D400 异常则该拍不推 step
+        let coils_ok = matches!(&coils, Ok(Ok(Ok(v))) if v.len() >= WATCH_M_CNT as usize);
+        let step = match dres {
+            Ok(Ok(Ok(regs))) if !regs.is_empty() => Some(regs[0] as i16),
+            _ => None,
+        };
+        if !coils_ok {
+            if let Some(s) = step {
+                let _ = plc.app.emit(EV_STEP_INDEX, s);
+            }
+            continue;
+        }
+        let coils = coils.unwrap().unwrap().unwrap();
+
+        // 报警点电平（按下标取点，空洞忽略）
+        let items: Vec<AlarmItem> = ALARM_POINTS
+            .iter()
+            .map(|&(m, name)| AlarmItem {
+                addr: m,
+                name: name.to_string(),
+                on: coils[(m - WATCH_M_START) as usize],
+            })
+            .collect();
+
+        // 边沿（第一拍不做）与待持久化状态
+        let mut edges: Vec<Edge> = Vec::new();
+        let mut alarm_changed = first;
+        if !first {
+            for it in &items {
+                let old = prev.get(&it.addr).copied().unwrap_or(false);
+                if old != it.on {
+                    edges.push(Edge {
+                        addr: it.addr,
+                        name: it.name.clone(),
+                        raised: it.on,
+                    });
+                    alarm_changed = true;
+                }
+            }
+        }
+
+        // 操作提示：地址最大且 TRUE 的一个
+        let prompt = PROMPT_POINTS
+            .iter()
+            .filter(|&&(m, _)| coils[(m - WATCH_M_START) as usize])
+            .last()
+            .map(|&(m, name)| AlarmItem {
+                addr: m,
+                name: name.to_string(),
+                on: true,
+            });
+        let prompt_addr = prompt.as_ref().map(|p| p.addr);
+
+        // 更新快照供 alarm_current 首屏同步
+        {
+            let snap = AlarmSnapshot {
+                alarms: items.clone(),
+                prompt: prompt.clone(),
+                step_index: step,
+            };
+            *plc.inner.alarm_last.lock().await = snap;
+        }
+
+        // 事件：报警变化/首拍推全量；提示变化/首拍推 Option；D400 每拍
+        if alarm_changed {
+            let _ = plc.app.emit(EV_ALARM_STATE, &items);
+        }
+        if first || prompt_addr != prev_prompt {
+            let _ = plc.app.emit(EV_PROMPT, &prompt);
+        }
+        if let Some(s) = step {
+            let _ = plc.app.emit(EV_STEP_INDEX, s);
+        }
+
+        // 落库：边沿日志 + 全量状态 upsert（同一事务、spawn_blocking，保序等待）
+        let states: Vec<(u16, bool)> = items.iter().map(|i| (i.addr, i.on)).collect();
+        let db = plc.app.state::<crate::AppState>().db.clone();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            if let Ok(conn) = db.lock() {
+                let _ = crate::db::alarms::persist_poll(&conn, &edges, &states);
+            }
+        })
+        .await;
+
+        // 对齐基线
+        for it in &items {
+            prev.insert(it.addr, it.on);
+        }
+        prev_prompt = prompt_addr;
+        first = false;
     }
 }
 
@@ -1061,4 +1226,25 @@ pub(crate) async fn array_download(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<ArrayDump, String> {
     state.plc.array_download().await
+}
+
+// ---------- P6：诊断与报警 ----------
+
+/// 读取 D300~D302 三轴故障码（原始 u16，前端按 4 位十六进制显示）。
+/// 与轴报警是否存在无关：无报警/离线时照常可点，读失败返回错误，未读到过的轴前端显示 0000
+#[tauri::command]
+pub(crate) async fn fault_codes_read(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<Vec<u16>, String> {
+    let cfg = state.plc.config_clone().await;
+    let addr = cfg.map.d_reg(FAULT_D);
+    state.plc.read_regs_raw(addr, FAULT_CNT).await
+}
+
+/// 首屏同步：取报警常驻任务最近一帧（全部报警电平 / 当前提示 / D400 动作步）
+#[tauri::command]
+pub(crate) async fn alarm_current(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<AlarmSnapshot, String> {
+    Ok(state.plc.inner.alarm_last.lock().await.clone())
 }
