@@ -17,7 +17,7 @@ import {
 } from "naive-ui";
 import AxisPad from "./components/AxisPad.vue";
 import { usePlcStore } from "./stores/plc";
-import { M_DEBUG, M_EXIT_DEBUG, M_RESET, M_RUN } from "./config/axes";
+import { M_DEBUG, M_EXIT_DEBUG, M_RESET, M_RUN, M_STOP } from "./config/axes";
 
 const route = useRoute();
 const router = useRouter();
@@ -156,6 +156,12 @@ onMounted(() => {
               <AxisPad
                 :m="M_EXIT_DEBUG"
                 label="退出调试"
+                size="compact"
+                :disabled="!plc.online"
+              />
+              <AxisPad
+                :m="M_STOP"
+                label="普通停止"
                 size="compact"
                 :disabled="!plc.online"
               />

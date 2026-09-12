@@ -5,7 +5,7 @@ import type { MenuOption } from "naive-ui";
 import { usePlcStore } from "../stores/plc";
 import { coilClearAll, coilPulse } from "../api/plc";
 import AxisPanel from "../components/AxisPanel.vue";
-import { AXES, M_DEBUG_STOP, M_STOP } from "../config/axes";
+import { AXES, M_DEBUG_STOP } from "../config/axes";
 
 const plc = usePlcStore();
 const message = useMessage();
@@ -124,20 +124,12 @@ onUnmounted(() => {
           >
             调试停止 M{{ M_DEBUG_STOP }}
           </n-button>
-          <n-button
-            type="error"
-            ghost
-            :disabled="!plc.online"
-            @click="stop(M_STOP, '普通停止')"
-          >
-            普通停止 M{{ M_STOP }}
-          </n-button>
         </n-space>
 
         <div class="tip">
-          Jog± 与全局工具栏的运行/调试/退出调试/复位均为按住为 1、松开为 0，不设超时自动复位
+          Jog± 与全局工具栏的运行/调试/退出调试/普通停止/复位均为按住为 1、松开为 0，不设超时自动复位
           （拖出按钮、切页、窗口失焦或断线均回 0，断线恢复后后端补写 0）；Inc±/Go 与
-          停止按钮为上升沿短脉冲（宽度可配，默认 200ms）；参数在失焦或点"应用"时写入
+          调试停止按钮为上升沿短脉冲（宽度可配，默认 200ms）；参数在失焦或点"应用"时写入
           对应 D 地址。
         </div>
       </n-card>

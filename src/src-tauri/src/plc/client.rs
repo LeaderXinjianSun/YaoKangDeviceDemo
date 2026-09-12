@@ -958,29 +958,32 @@ async fn alarm_watch_task(plc: Plc) {
         }
         let coils = coils.unwrap().unwrap().unwrap();
 
-        // 报警点电平（按下标取点，空洞忽略）
+        // 报警点电平（按下标取点，空洞忽略）；含只显示不落库的点（如 M320 暂停）
         let items: Vec<AlarmItem> = ALARM_POINTS
             .iter()
-            .map(|&(m, name)| AlarmItem {
+            .map(|&(m, name, _log)| AlarmItem {
                 addr: m,
                 name: name.to_string(),
                 on: coils[(m - WATCH_M_START) as usize],
             })
             .collect();
 
-        // 边沿（第一拍不做）与待持久化状态
+        // 边沿（第一拍不做）与待持久化状态；log=false 的点（如 M320）只显示不落库：
+        // 电平变化仍须置 alarm_changed 以推送显示，仅不生成落库边沿
         let mut edges: Vec<Edge> = Vec::new();
         let mut alarm_changed = first;
         if !first {
-            for it in &items {
+            for (it, &(_, _, log)) in items.iter().zip(ALARM_POINTS.iter()) {
                 let old = prev.get(&it.addr).copied().unwrap_or(false);
                 if old != it.on {
-                    edges.push(Edge {
-                        addr: it.addr,
-                        name: it.name.clone(),
-                        raised: it.on,
-                    });
                     alarm_changed = true;
+                    if log {
+                        edges.push(Edge {
+                            addr: it.addr,
+                            name: it.name.clone(),
+                            raised: it.on,
+                        });
+                    }
                 }
             }
         }
@@ -1019,7 +1022,12 @@ async fn alarm_watch_task(plc: Plc) {
         }
 
         // 落库：边沿日志 + 全量状态 upsert（同一事务、spawn_blocking，保序等待）
-        let states: Vec<(u16, bool)> = items.iter().map(|i| (i.addr, i.on)).collect();
+        let states: Vec<(u16, bool)> = items
+            .iter()
+            .zip(ALARM_POINTS.iter())
+            .filter(|(_, &(_, _, log))| log)
+            .map(|(it, _)| (it.addr, it.on))
+            .collect();
         let db = plc.app.state::<crate::AppState>().db.clone();
         let _ = tauri::async_runtime::spawn_blocking(move || {
             if let Ok(conn) = db.lock() {
